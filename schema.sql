@@ -29,3 +29,36 @@ create index if not exists tasks_position_idx on tasks (client, position);
 -- Also shipped as migrations/003_done_at.sql.
 alter table tasks add column if not exists done_at timestamptz;
 create index if not exists tasks_done_at_idx on tasks (done_at desc);
+
+-- Social module: brand profiles and the post queue.
+-- Also shipped as migrations/004_social.sql.
+create table if not exists clients (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  is_self boolean not null default false,
+  voice text, audience text,
+  pillars text[], tone_do text[], tone_dont text[], colours text[],
+  links jsonb,
+  language text not null default 'english' check (language in ('english','hinglish','hindi')),
+  notes text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists clients_name_idx on clients (lower(name));
+create unique index if not exists clients_self_idx on clients (is_self) where is_self;
+
+create table if not exists posts (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references clients(id) on delete cascade,
+  platform text not null check (platform in ('instagram','linkedin')),
+  format text not null default 'post' check (format in ('post','reel','carousel','story','article')),
+  pillar text, hook text, caption text, hashtags text[], image_prompt text, cta text,
+  scheduled_at timestamptz,
+  status text not null default 'draft' check (status in ('draft','approved','posted')),
+  posted_at timestamptz,
+  position double precision,
+  created_at timestamptz not null default now()
+);
+create index if not exists posts_client_idx on posts (client_id, status, scheduled_at);
+create index if not exists posts_position_idx on posts (client_id, position);
+alter table clients enable row level security;
+alter table posts enable row level security;

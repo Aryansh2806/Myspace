@@ -3,6 +3,14 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+/* Three tabs do not fit beside the wordmark on a 375px screen — measured at
+   30px of slack against a 64px tab — so below 420px they go icon-only. */
+const TABS = [
+  { href: "/", label: "Board", icon: <><path d="M4 6h16M4 12h16M4 18h10" /></> },
+  { href: "/inbox", label: "Paste", icon: <><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4h6v3H9z" /></> },
+  { href: "/social", label: "Social", icon: <><path d="M4 20v-5M10 20V9M16 20v-8M22 20V5" /></> },
+];
+
 export default function Topbar() {
   const path = usePathname();
   const [today, setToday] = useState("");
@@ -33,12 +41,18 @@ export default function Topbar() {
         <p className="today">{today || " "}</p>
       </div>
       <nav aria-label="Main">
-        <a className={`tab${path === "/" ? " on" : ""}`} href="/">
-          Board
-        </a>
-        <a className={`tab${path === "/inbox" ? " on" : ""}`} href="/inbox">
-          Paste
-        </a>
+        {TABS.map(({ href, label, icon }) => {
+          const on = href === "/" ? path === "/" : path.startsWith(href);
+          return (
+            <a key={href} className={`tab${on ? " on" : ""}`} href={href} aria-label={label}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
+                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {icon}
+              </svg>
+              <span>{label}</span>
+            </a>
+          );
+        })}
       </nav>
       <button className="iconbtn" onClick={flipTheme} aria-label="Switch theme">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">

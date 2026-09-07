@@ -22,3 +22,43 @@ export type Task = {
   done_at: string | null;
   created_at: string;
 };
+
+export type Language = "english" | "hinglish" | "hindi";
+
+export type Client = {
+  id: string;
+  name: string;
+  is_self: boolean;
+  voice: string | null;
+  audience: string | null;
+  pillars: string[] | null;
+  tone_do: string[] | null;
+  tone_dont: string[] | null;
+  colours: string[] | null;
+  links: { instagram?: string | null; linkedin?: string | null; website?: string | null } | null;
+  language: Language;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Platform = "instagram" | "linkedin";
+export type PostFormat = "post" | "reel" | "carousel" | "story" | "article";
+export type PostStatus = "draft" | "approved" | "posted";
+
+export type Post = {
+  id: string;
+  client_id: string;
+  platform: Platform;
+  format: PostFormat;
+  pillar: string | null;
+  hook: string | null;
+  caption: string | null;
+  hashtags: string[] | null;
+  image_prompt: string | null;
+  cta: string | null;
+  scheduled_at: string | null;
+  status: PostStatus;
+  posted_at: string | null;
+  position: number | null;
+  created_at: string;
+};

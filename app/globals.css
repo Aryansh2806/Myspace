@@ -555,3 +555,26 @@ textarea.paste-field { min-height: 40vh; }
   text-transform: uppercase; letter-spacing: .08em;
 }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* ---------- nav tabs ---------- */
+.tab { gap: 6px; }
+.tab svg { width: 17px; height: 17px; flex: none; }
+/* Measured: brand 130 + nav 125 + button 38 leaves ~30px of slack at 375px,
+   and a third labelled tab needs ~64px. Icons only until there is room. */
+@media (max-width: 419px) {
+  .tab span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tab { padding: 0 10px; }
+}
+@media (min-width: 420px) { .tab svg { display: none; } }
+
+/* ---------- social module ---------- */
+.post-line { margin: 0 0 8px; line-height: 1.5; }
+.post-line strong { color: var(--text); font-weight: 600; }
+.post-field { display: grid; gap: 6px; margin-bottom: 12px; font-size: 12.5px; color: var(--muted); }
+.post-field > span { font-weight: 550; }
+textarea.caption-field { min-height: 9em; }
+.profile-form, .plan-form { display: block; }
+.plan-form { text-align: left; padding: 16px; margin-bottom: 16px; }
+.self-pill { margin-left: 8px; background: var(--ember-bg); color: var(--ember); border-color: transparent; font-size: 11px; }
+.brand-hero { grid-template-columns: 1fr; }
+.client .cname { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
