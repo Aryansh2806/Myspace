@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import VoiceButton from "../voice";
 
 type Draft = {
   title: string;
@@ -160,6 +161,17 @@ export default function Inbox() {
         <button className="btn is-primary" disabled={busy || !text.trim()} onClick={parse}>
           {busy ? "Reading…" : "Find tasks"}
         </button>
+        <VoiceButton
+          idleLabel="Speak"
+          onText={(t, meta) => {
+            setText((prev) => (prev ? prev + "\n" + t : t));
+            setNote(
+              `Heard ${meta.seconds ? Math.round(meta.seconds) + "s" : "you"}` +
+                (meta.language ? ` in ${meta.language}` : "") +
+                ". Check it, then find tasks.",
+            );
+          }}
+        />
         <label className="btn" style={{ cursor: "pointer" }}>
           Upload chat
           <input
@@ -180,6 +192,7 @@ export default function Inbox() {
           onChange={(e) => setClient(e.target.value)}
         />
       </div>
+      {note && !busy && <p className="muted" role="status">{note}</p>}
       {err && <p className="err">{err}</p>}
       {busy && <p className="muted" role="status">Reading the text and pulling out tasks — this takes a few seconds.</p>}
     </>

@@ -434,6 +434,12 @@ export default function Board() {
       </div>
 
       <div className="dock">
+        <a className="fab fab-mic" href="/inbox" aria-label="Add tasks by voice">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
+            <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" />
+          </svg>
+        </a>
         <button className="fab" onClick={() => setAdding(true)}>
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />

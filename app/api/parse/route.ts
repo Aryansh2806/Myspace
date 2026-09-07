@@ -45,8 +45,15 @@ Rules:
   Resolve a message's relative dates against ITS OWN timestamp, not against now —
   "kal" in a message sent three days ago is not tomorrow. Pasted text with no
   such prefix resolves against now.
-- Resolve "by Friday", "EOD tomorrow", "next week", "month end", and Hinglish forms
-  ("kal", "parso", "agle hafte", "15 tarikh", "iss weekend") into real timestamps.
+- The text may be English, Hindi in Devanagari, romanised Hinglish, or one
+  sentence that switches between them — it is often a voice transcript. Read it
+  whatever script it arrives in, and always write the task itself in English.
+- Resolve "by Friday", "EOD tomorrow", "next week", "month end", and Hinglish
+  forms ("kal", "parso", "agle hafte", "15 tarikh", "iss weekend") and their
+  Devanagari equivalents (कल, परसों, अगले हफ्ते, इस हफ्ते) into real timestamps.
+- A voice transcript has no punctuation to lean on and may contain filler
+  ("umm", "matlab", "haan to"). Ignore the filler; several tasks may run
+  together in one breath, so split them.
   "kal" is ambiguous (yesterday/tomorrow) — in a request it means tomorrow.
 - A date with no time means 18:00 local. No date at all means null. Never invent one.
 - title is imperative and self-contained: "Send Rahul the logo source files",
