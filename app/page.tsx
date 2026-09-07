@@ -339,7 +339,9 @@ export default function Board() {
   const headline =
     counts.open === 0
       ? "Queue clear. Everything shipped."
-      : `${doneCount === 0 ? "Nothing" : doneCount} done. ${counts.open} to go.`;
+      : doneCount === 0
+        ? `${counts.open} still to go.`
+        : `${doneCount} done. ${counts.open} to go.`;
   const clients = [...new Set(tasks.map((t) => t.client?.trim() || "Unassigned"))].sort((a, b) =>
     a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b),
   );
