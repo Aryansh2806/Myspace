@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import type { Client, Post, Platform } from "@/lib/supabase";
 import PostRow from "../postrow";
+import Growth from "../growth";
 import { weeksOf, sortQueue } from "@/lib/calendar.mjs";
 
 type Draft = Post & { why?: string; keep: boolean };
@@ -24,6 +25,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
   const [end, setEnd] = useState(ymd(new Date(Date.now() + 13 * 864e5)));
   const [brief, setBrief] = useState("");
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
+  const [growing, setGrowing] = useState(false);
 
   async function load() {
     try {
@@ -236,15 +238,27 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </div>
 
-      {!planning ? (
+      {!planning && !growing ? (
         <div className="bar">
           <button className="btn is-primary" onClick={() => setPlanning(true)}>
             Generate plan
+          </button>
+          <button className="btn" onClick={() => setGrowing(true)}>
+            Growth ideas
           </button>
           <a className="btn" href="/social">
             All brands
           </a>
         </div>
+      ) : growing ? (
+        <>
+          <div className="bar">
+            <button className="btn" onClick={() => setGrowing(false)}>
+              Back to posts
+            </button>
+          </div>
+          <Growth client={client} />
+        </>
       ) : (
         <div className="capture plan-form">
           <label className="post-field">
