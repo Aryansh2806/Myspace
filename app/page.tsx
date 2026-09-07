@@ -104,7 +104,8 @@ export default function Board() {
 
   const visible = tasks
     .filter((t) => showDone || t.status !== "done")
-    .filter((t) => !todayOnly || dueIds.has(t.id));
+    // Anything in the "Due now" strip is not repeated under its client below.
+    .filter((t) => (todayOnly ? dueIds.has(t.id) : !dueIds.has(t.id)));
 
   const groups = new Map<string, Task[]>();
   for (const t of visible) {
@@ -116,7 +117,7 @@ export default function Board() {
     <>
       {due.length > 0 && !todayOnly && (
         <>
-          <h2>Due today — {due.length}</h2>
+          <h2>Due now — {due.length}</h2>
           <div className="card">
             {due.map((t) => (
               <Row key={t.id} t={t} patch={patch} remove={remove} />
@@ -136,7 +137,7 @@ export default function Board() {
         </div>
       ))}
 
-      {visible.length === 0 && (
+      {visible.length === 0 && due.length === 0 && (
         <p className="muted">
           {todayOnly ? (
             "Nothing due today."

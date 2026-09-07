@@ -51,6 +51,26 @@ non-exports) and the due-date selector shared by the notifier and the digest
 
 ## Costs
 
-A pasted message is a fraction of a cent. A 2000-message group export is a few
-cents. Exports are capped at 15 chunks (~2250 messages) per parse so a huge file
-can't run up a bill; you'll be told when it truncates.
+Set `PARSE_MODEL` in `.env.local` to change models. Measured on real fixtures —
+one client email and one WhatsApp export, 3 runs each, scored on whether every
+extracted due date was right:
+
+| Model | Correct | Speed | Cost per parse |
+|---|---|---|---|
+| `claude-opus-5` | 3/3 | ~6s | ~$0.013 |
+| `claude-sonnet-5` *(default here)* | 3/3 | ~5s | ~$0.005 |
+| `claude-haiku-4-5` | 2/3 | ~20s | ~$0.007 |
+
+**Haiku is not the cheap option.** It burns thinking tokens on this task, so it
+came out slower than Opus and dearer than Sonnet — while still misdating
+"15 tarikh" as the 14th and "by Friday" as a Saturday. Sonnet matched Opus
+on every fixture at 2.5x less, which is why it is the default.
+
+The failures only show up on full messages with several tasks and a distractor;
+on a single clean sentence all three models score 3/3. Benchmark on your own
+messages before trusting any of this.
+
+Exports are capped at 15 chunks (~2250 messages) per parse so a huge file can't
+run up a bill; you'll be told when it truncates. A hard monthly ceiling is not
+something this app can set — put one at
+[console.anthropic.com](https://console.anthropic.com) → Limits.

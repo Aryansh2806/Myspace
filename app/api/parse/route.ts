@@ -3,11 +3,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { parseWhatsApp, chunk } from "@/lib/whatsapp.mjs";
+import { nowLabel } from "@/lib/due.mjs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const TZ = "Asia/Kolkata";
+// Swap models without a code change. Haiku is ~5x cheaper than Opus but weaker
+// at exactly what this job is: resolving relative dates and judging what is
+// actually actionable. See README -> Costs.
+const MODEL = process.env.PARSE_MODEL ?? "claude-opus-5";
+const IS_HAIKU = MODEL.startsWith("claude-haiku");
 // ponytail: hard cap so one huge export can't quietly run up a bill.
 const MAX_CHUNKS = 15;
 
@@ -25,33 +31,43 @@ const Result = z.object({
 const client = new Anthropic();
 
 function systemPrompt() {
-  const now = new Date().toLocaleString("en-IN", { timeZone: TZ, hour12: false });
   return `You extract action items from messages Aryan received from clients.
-Right now it is ${now} in ${TZ}. Resolve every relative date against that, and emit
-ISO 8601 with the +05:30 offset.
+Right now it is ${nowLabel(new Date(), TZ)} in ${TZ}. Resolve every relative date
+against that, and emit ISO 8601 with the +05:30 offset.
 
 Rules:
 - Only extract things Aryan must DO. Skip greetings, acknowledgements, gossip,
   status updates, and anything the other person is doing themselves.
+- Chat messages are prefixed with when they were SENT, as [YYYY-MM-DDTHH:MM].
+  Resolve a message's relative dates against ITS OWN timestamp, not against now —
+  "kal" in a message sent three days ago is not tomorrow. Pasted text with no
+  such prefix resolves against now.
 - Resolve "by Friday", "EOD tomorrow", "next week", "month end", and Hinglish forms
   ("kal", "parso", "agle hafte", "15 tarikh", "iss weekend") into real timestamps.
   "kal" is ambiguous (yesterday/tomorrow) — in a request it means tomorrow.
 - A date with no time means 18:00 local. No date at all means null. Never invent one.
 - title is imperative and self-contained: "Send Rahul the logo source files",
   not "logo files".
-- client is the person or company asking. Use the sender name when the message
-  gives no better name.
+- client is who the work is for. Prefer the company name over the person's name
+  when the message gives both, so the same client groups together across messages.
+  Fall back to the sender's name when there is no company.
 - source is the verbatim message the task came from, so Aryan can check it.
 - If nothing is actionable, return an empty tasks array. That is a normal answer.`;
 }
 
 async function extract(userText: string) {
   const res = await client.messages.parse({
-    model: "claude-opus-5",
+    model: MODEL,
     max_tokens: 8000,
     system: systemPrompt(),
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium", format: zodOutputFormat(Result) },
+    // Haiku 4.5 predates adaptive thinking and rejects `effort`.
+    ...(IS_HAIKU
+      ? { thinking: { type: "enabled" as const, budget_tokens: 2000 } }
+      : { thinking: { type: "adaptive" as const } }),
+    output_config: {
+      ...(IS_HAIKU ? {} : { effort: "medium" as const }),
+      format: zodOutputFormat(Result),
+    },
     messages: [{ role: "user", content: userText }],
   });
   return res.parsed_output?.tasks ?? [];
@@ -72,7 +88,7 @@ export async function POST(req: Request) {
     truncated = all.length > MAX_CHUNKS;
     batches = all
       .slice(0, MAX_CHUNKS)
-      .map((c) => c.map((m) => `${m.sender}: ${m.text}`).join("\n"));
+      .map((c) => c.map((m) => `[${m.when ?? "?"}] ${m.sender}: ${m.text}`).join("\n"));
   } else {
     kind = /^(from|to|subject|sent):/im.test(text) ? "email" : "note";
     batches = [text];
