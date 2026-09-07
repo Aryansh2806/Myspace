@@ -64,57 +64,76 @@ export default function Inbox() {
   if (drafts) {
     return (
       <>
-        <h2>Review — {drafts.filter((d) => d.keep).length} of {drafts.length} selected</h2>
-        <p className="muted">{note} Nothing is saved until you hit Save.</p>
-        <div className="card">
+        <h2 className="group-head">
+          Review <span className="count">{drafts.filter((d) => d.keep).length} of {drafts.length} selected</span>
+        </h2>
+        <p className="muted" style={{ marginTop: 0 }}>{note} Nothing is saved until you hit Save.</p>
+        <ul className="list">
           {drafts.map((d, i) => (
-            <div className="row" key={i}>
+            <li className="task" key={i}>
               <input
+                className="task-check"
                 type="checkbox"
                 checked={d.keep}
+                aria-label={`Keep “${d.title}”`}
                 onChange={(e) =>
                   setDrafts(drafts.map((x, j) => (i === j ? { ...x, keep: e.target.checked } : x)))
                 }
               />
               <input
+                className="task-title"
                 type="text"
                 value={d.title}
-                title={d.source}
+                aria-label="Task"
                 onChange={(e) =>
                   setDrafts(drafts.map((x, j) => (i === j ? { ...x, title: e.target.value } : x)))
                 }
               />
-              <input
-                type="text"
-                style={{ maxWidth: 120 }}
-                placeholder="client"
-                value={d.client ?? ""}
-                onChange={(e) =>
-                  setDrafts(drafts.map((x, j) => (i === j ? { ...x, client: e.target.value } : x)))
-                }
-              />
-              <input
-                type="datetime-local"
-                value={toInput(d.due_at)}
-                onChange={(e) =>
-                  setDrafts(
-                    drafts.map((x, j) =>
-                      i === j
-                        ? { ...x, due_at: e.target.value ? new Date(e.target.value).toISOString() : null }
-                        : x,
-                    ),
-                  )
-                }
-              />
-            </div>
+              <div className="task-meta">
+                <label className="pill is-static">
+                  <input
+                    type="text"
+                    size={10}
+                    placeholder="client"
+                    aria-label="Client"
+                    style={{ border: 0, background: "none", padding: 0, fontSize: "12.5px", minWidth: 0 }}
+                    value={d.client ?? ""}
+                    onChange={(e) =>
+                      setDrafts(drafts.map((x, j) => (i === j ? { ...x, client: e.target.value } : x)))
+                    }
+                  />
+                </label>
+                <label className="pill is-static">
+                  <input
+                    type="datetime-local"
+                    aria-label="Due date"
+                    value={toInput(d.due_at)}
+                    onChange={(e) =>
+                      setDrafts(
+                        drafts.map((x, j) =>
+                          i === j
+                            ? { ...x, due_at: e.target.value ? new Date(e.target.value).toISOString() : null }
+                            : x,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              </div>
+              {d.source && <div className="task-source">{d.source}</div>}
+            </li>
           ))}
-          {drafts.length === 0 && <p className="muted" style={{ padding: 12 }}>Nothing actionable found.</p>}
-        </div>
+        </ul>
+        {drafts.length === 0 && (
+          <div className="empty">
+            <p>Nothing actionable found in that text.</p>
+          </div>
+        )}
         <div className="bar">
-          <button className="primary" disabled={busy || !drafts.some((d) => d.keep)} onClick={save}>
+          <button className="btn is-primary" disabled={busy || !drafts.some((d) => d.keep)} onClick={save}>
             Save {drafts.filter((d) => d.keep).length}
           </button>
-          <button className="ghost" onClick={() => setDrafts(null)}>
+          <button className="btn" onClick={() => setDrafts(null)}>
             Back
           </button>
         </div>
@@ -124,8 +143,9 @@ export default function Inbox() {
 
   return (
     <>
-      <h2>Paste anything</h2>
+      <h2 className="group-head">Paste anything</h2>
       <textarea
+        className="field"
         placeholder="A WhatsApp message, an email, a note to self — or drop a WhatsApp _chat.txt export here."
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -137,18 +157,11 @@ export default function Inbox() {
         }}
       />
       <div className="bar">
-        <button className="primary" disabled={busy || !text.trim()} onClick={parse}>
+        <button className="btn is-primary" disabled={busy || !text.trim()} onClick={parse}>
           {busy ? "Reading…" : "Find tasks"}
         </button>
-        <input
-          type="text"
-          placeholder="default client (optional)"
-          value={client}
-          onChange={(e) => setClient(e.target.value)}
-          style={{ padding: 8, border: "1px solid #ddd", borderRadius: 8, font: "inherit" }}
-        />
-        <label className="ghost" style={{ cursor: "pointer" }}>
-          Upload _chat.txt
+        <label className="btn" style={{ cursor: "pointer" }}>
+          Upload chat
           <input
             type="file"
             accept=".txt"
@@ -156,8 +169,19 @@ export default function Inbox() {
             onChange={async (e) => e.target.files?.[0] && setText(await e.target.files[0].text())}
           />
         </label>
-        {err && <span className="err">{err}</span>}
       </div>
+      <div className="bar" style={{ marginTop: 8 }}>
+        <input
+          className="field"
+          type="text"
+          placeholder="Default client for these tasks (optional)"
+          aria-label="Default client"
+          value={client}
+          onChange={(e) => setClient(e.target.value)}
+        />
+      </div>
+      {err && <p className="err">{err}</p>}
+      {busy && <p className="muted" role="status">Reading the text and pulling out tasks — this takes a few seconds.</p>}
     </>
   );
 }

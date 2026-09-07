@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/supabase";
 import { selectDue, endOfDay } from "@/lib/due.mjs";
 
@@ -9,24 +9,50 @@ const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
 const toInput = (iso: string | null) => {
   if (!iso) return "";
   const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-const fromInput = (v: string) => (v ? new Date(v).toISOString() : null);
 
-function urgency(t: Task) {
-  if (t.status === "done" || !t.due_at) return "";
-  const due = new Date(t.due_at);
-  if (due < new Date()) return "overdue";
-  return due.toDateString() === new Date().toDateString() ? "today" : "";
+/** Never a bare numeric date — "06/09" is unreadable at a glance and ambiguous. */
+function humanDue(iso: string) {
+  const d = new Date(iso);
+  const today = new Date();
+  const days = Math.round(
+    (new Date(d).setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0)) / 86400000,
+  );
+  const time = d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Tomorrow ${time}`;
+  if (days === -1) return `Yesterday ${time}`;
+  if (days < -1) return `${-days} days ago`;
+  const date = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return days < 7 ? `${d.toLocaleDateString("en-GB", { weekday: "short" })} ${date}` : date;
+}
+
+/** Grow a one-line textarea to fit its wrapped content. */
+function grow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+type State = "overdue" | "today" | "later" | "undated";
+function stateOf(t: Task): State {
+  if (!t.due_at) return "undated";
+  const d = new Date(t.due_at);
+  if (d < new Date()) return "overdue";
+  return d.toDateString() === new Date().toDateString() ? "today" : "later";
 }
 
 export default function Board() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
-  const [showDone, setShowDone] = useState(false);
-  const [todayOnly, setTodayOnly] = useState(false);
-  const [perm, setPerm] = useState<NotificationPermission | "unsupported">("denied");
   const [err, setErr] = useState("");
+  const [showDone, setShowDone] = useState(false);
+  const [filter, setFilter] = useState<"all" | "due">("all");
+  const [open, setOpen] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Task | null>(null);
+  const [perm, setPerm] = useState<NotificationPermission | "unsupported">("denied");
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = async () => {
     const res = await fetch("/api/tasks");
@@ -40,8 +66,6 @@ export default function Board() {
     setPerm(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
   }, []);
 
-  // Nudge for anything due in the next 2 hours. localStorage keeps it to once
-  // per task, so a reload or a tab left open all day doesn't re-fire.
   useEffect(() => {
     if (!tasks || perm !== "granted") return;
     const fire = () => {
@@ -52,10 +76,7 @@ export default function Board() {
       const set = new Set(seen);
       for (const t of selectDue(tasks, Date.now() + NOTIFY_AHEAD_MS)) {
         if (set.has(t.id)) continue;
-        new Notification(t.client ? `${t.client} — due` : "Due", {
-          body: t.title,
-          tag: t.id,
-        });
+        new Notification(t.client ? `${t.client} — due` : "Due", { body: t.title, tag: t.id });
         set.add(t.id);
       }
       const live = new Set(tasks.map((t) => t.id));
@@ -67,141 +88,273 @@ export default function Board() {
   }, [tasks, perm]);
 
   async function patch(id: string, fields: Partial<Task>) {
+    const before = tasks!;
     setTasks((ts) => ts!.map((t) => (t.id === id ? { ...t, ...fields } : t)));
-    await fetch("/api/tasks", {
+    const res = await fetch("/api/tasks", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id, ...fields }),
     });
+    // Fire-and-forget hides failures; roll back so the screen can't lie.
+    if (!res.ok) {
+      setTasks(before);
+      setErr("That change did not save. Check your connection.");
+    }
   }
 
-  async function remove(id: string) {
-    setTasks((ts) => ts!.filter((t) => t.id !== id));
-    await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
+  /** Soft delete: the row is only hidden, so it can come back. */
+  async function drop(t: Task) {
+    setTasks((ts) => ts!.filter((x) => x.id !== t.id));
+    setUndo(t);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndo(null), 8000);
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: t.id, status: "dropped" }),
+    });
+  }
+
+  async function undrop(t: Task) {
+    setUndo(null);
+    setTasks((ts) => [t, ...ts!]);
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: t.id, status: "open" }),
+    });
+    load();
   }
 
   async function add() {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "New task" }),
+      body: JSON.stringify({ title: "" }),
     });
     const created = await res.json();
     setTasks((ts) => [...created, ...ts!]);
+    setOpen(created[0]?.id ?? null);
   }
 
-  if (err)
+  if (err && !tasks) return <p className="err">{err}</p>;
+  if (!tasks)
     return (
-      <p className="err">
-        {err} — check the Supabase keys in <code>.env.local</code>, and that{" "}
-        <code>schema.sql</code> has been run.
+      <p className="muted" role="status">
+        Loading…
       </p>
     );
-  if (!tasks) return <p className="muted">Loading…</p>;
 
-  const due = selectDue(tasks, endOfDay());
-  const dueIds = new Set(due.map((t) => t.id));
+  const live = tasks.filter((t) => t.status !== "done");
+  const dueIds = new Set(selectDue(tasks, endOfDay()).map((t) => t.id));
+  const counts = {
+    open: live.length,
+    overdue: live.filter((t) => stateOf(t) === "overdue").length,
+    today: live.filter((t) => stateOf(t) === "today").length,
+    undated: live.filter((t) => stateOf(t) === "undated").length,
+  };
 
   const visible = tasks
     .filter((t) => showDone || t.status !== "done")
-    // Anything in the "Due now" strip is not repeated under its client below.
-    .filter((t) => (todayOnly ? dueIds.has(t.id) : !dueIds.has(t.id)));
+    .filter((t) => filter === "all" || dueIds.has(t.id));
 
   const groups = new Map<string, Task[]>();
   for (const t of visible) {
-    const k = t.client ?? "No client";
+    const k = t.client?.trim() || "Unassigned";
     groups.set(k, [...(groups.get(k) ?? []), t]);
   }
+  // Clients with something due float to the top; Unassigned always sinks.
+  const order = [...groups.keys()].sort((a, b) => {
+    if (a === "Unassigned") return 1;
+    if (b === "Unassigned") return -1;
+    const urgent = (k: string) => (groups.get(k)!.some((t) => dueIds.has(t.id)) ? 0 : 1);
+    return urgent(a) - urgent(b) || a.localeCompare(b);
+  });
 
   return (
     <>
-      {due.length > 0 && !todayOnly && (
-        <>
-          <h2>Due now — {due.length}</h2>
-          <div className="card">
-            {due.map((t) => (
-              <Row key={t.id} t={t} patch={patch} remove={remove} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {[...groups.keys()].sort().map((client) => (
-        <div key={client}>
-          <h2>{client}</h2>
-          <div className="card">
-            {groups.get(client)!.map((t) => (
-              <Row key={t.id} t={t} patch={patch} remove={remove} />
-            ))}
-          </div>
+      <div className="stats">
+        <div className="stat">
+          <b>{counts.open}</b>
+          <span>Open</span>
         </div>
-      ))}
+        <div className={`stat${counts.overdue ? " is-danger" : ""}`}>
+          <b>{counts.overdue}</b>
+          <span>Overdue</span>
+        </div>
+        <div className={`stat${counts.today ? " is-warn" : ""}`}>
+          <b>{counts.today}</b>
+          <span>Today</span>
+        </div>
+        <div className="stat">
+          <b>{counts.undated}</b>
+          <span>No date</span>
+        </div>
+      </div>
 
-      {visible.length === 0 && due.length === 0 && (
-        <p className="muted">
-          {todayOnly ? (
-            "Nothing due today."
-          ) : (
-            <>
-              Nothing here. <a href="/inbox">Paste a message</a> to get started.
-            </>
+      {err && <p className="err">{err}</p>}
+
+      {visible.length === 0 ? (
+        <div className="empty">
+          <p>{filter === "due" ? "Nothing due today." : "No tasks yet."}</p>
+          {filter === "all" && (
+            <a className="btn is-primary" href="/inbox">
+              Paste a message
+            </a>
           )}
-        </p>
+        </div>
+      ) : (
+        order.map((client) => (
+          <section key={client}>
+            <h2 className="group-head">
+              {client} <span className="count">{groups.get(client)!.length}</span>
+            </h2>
+            <ul className="list">
+              {groups.get(client)!.map((t) => (
+                <Row
+                  key={t.id}
+                  t={t}
+                  open={open === t.id}
+                  toggle={() => setOpen(open === t.id ? null : t.id)}
+                  patch={patch}
+                  drop={drop}
+                />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
 
       <div className="bar">
-        <button className="ghost" onClick={add}>
+        <button className="btn" onClick={add}>
           + Task
         </button>
-        <label className="muted">
-          <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} />{" "}
-          today only
-        </label>
-        <label className="muted">
-          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> show
-          done
-        </label>
+        <button
+          className="toggle"
+          aria-pressed={filter === "due"}
+          onClick={() => setFilter(filter === "due" ? "all" : "due")}
+        >
+          <input type="checkbox" readOnly checked={filter === "due"} tabIndex={-1} aria-hidden="true" /> Due only
+        </button>
+        <button className="toggle" aria-pressed={showDone} onClick={() => setShowDone(!showDone)}>
+          <input type="checkbox" readOnly checked={showDone} tabIndex={-1} aria-hidden="true" /> Done
+        </button>
         {perm === "default" && (
-          <button className="ghost" onClick={() => Notification.requestPermission().then(setPerm)}>
+          <button className="toggle" onClick={() => Notification.requestPermission().then(setPerm)}>
             Enable reminders
           </button>
         )}
-        {perm === "denied" && <span className="muted">Reminders blocked in browser settings.</span>}
       </div>
+
+      {undo && (
+        <div className="undo" role="status">
+          <span>Removed “{undo.title || "Untitled"}”</span>
+          <button onClick={() => undrop(undo)}>Undo</button>
+        </div>
+      )}
     </>
   );
 }
 
 function Row({
   t,
+  open,
+  toggle,
   patch,
-  remove,
+  drop,
 }: {
   t: Task;
+  open: boolean;
+  toggle: () => void;
   patch: (id: string, f: Partial<Task>) => void;
-  remove: (id: string) => void;
+  drop: (t: Task) => void;
 }) {
+  const [editingDate, setEditingDate] = useState(false);
+  const state = stateOf(t);
+  const done = t.status === "done";
+
   return (
-    <div className={`row ${urgency(t)} ${t.status === "done" ? "done" : ""}`}>
+    <li className={`task${done ? " is-done" : ""}`}>
       <input
+        className="task-check"
         type="checkbox"
-        checked={t.status === "done"}
+        checked={done}
+        aria-label={`Mark “${t.title}” done`}
         onChange={(e) => patch(t.id, { status: e.target.checked ? "done" : "open" })}
       />
-      <input
-        type="text"
+
+      {/* A textarea, not an input: titles wrap instead of clipping on a phone. */}
+      <textarea
+        className="task-title"
+        rows={1}
         defaultValue={t.title}
-        title={t.source ?? ""}
+        placeholder="What needs doing?"
+        aria-label="Task"
+        ref={grow}
+        onInput={(e) => grow(e.currentTarget)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+        }}
         onBlur={(e) => e.target.value !== t.title && patch(t.id, { title: e.target.value })}
       />
-      <input
-        type="datetime-local"
-        defaultValue={toInput(t.due_at)}
-        onChange={(e) => patch(t.id, { due_at: fromInput(e.target.value) })}
-      />
-      <button className="x" onClick={() => remove(t.id)} title="delete">
-        ×
+
+      <div className="task-meta">
+        {editingDate || (state !== "undated" && open) ? (
+          <label className="pill is-static">
+            <input
+              type="datetime-local"
+              autoFocus
+              aria-label="Due date"
+              defaultValue={toInput(t.due_at)}
+              onBlur={() => setEditingDate(false)}
+              onChange={(e) =>
+                patch(t.id, { due_at: e.target.value ? new Date(e.target.value).toISOString() : null })
+              }
+            />
+          </label>
+        ) : state === "undated" ? (
+          <button className="pill is-ghost" onClick={() => setEditingDate(true)}>
+            + Due date
+          </button>
+        ) : (
+          <button
+            className={`pill${state === "overdue" ? " is-overdue" : state === "today" ? " is-today" : ""}`}
+            onClick={() => setEditingDate(true)}
+          >
+            {/* Text, not just colour — WCAG 1.4.1 */}
+            {state === "overdue" ? "Overdue · " : ""}
+            {humanDue(t.due_at!)}
+          </button>
+        )}
+
+        {t.source && (
+          <button className="pill" aria-expanded={open} onClick={toggle}>
+            {open ? "Hide" : "Source"}
+          </button>
+        )}
+      </div>
+
+      <button className="task-del" aria-label={`Remove “${t.title}”`} onClick={() => drop(t)}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
-    </div>
+
+      {open && t.source && (
+        <div className="task-source">
+          <strong>{t.source_kind === "whatsapp" ? "WhatsApp" : t.source_kind === "email" ? "Email" : "Note"}:</strong>{" "}
+          {t.source}
+        </div>
+      )}
+    </li>
   );
 }
