@@ -196,3 +196,36 @@ textarea.field { min-height: 40vh; resize: vertical; line-height: 1.5; }
   .undo { animation: rise .18s ease-out; }
   @keyframes rise { from { transform: translateY(8px); opacity: 0 } }
 }
+
+/* ---------- add-task dialog (native <dialog>: focus trap + Esc for free) ---------- */
+.sheet {
+  border: 0; padding: 0; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 18px;
+  width: min(430px, calc(100% - 20px));
+  box-shadow: 0 24px 60px rgb(0 0 0 / .28);
+}
+.sheet::backdrop { background: rgb(0 0 0 / .45); }
+/* On a phone it sits at the bottom, in thumb reach. */
+@media (max-width: 560px) {
+  .sheet {
+    margin: auto auto 0; width: 100%; max-width: none;
+    border-radius: 18px 18px 0 0; border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet[open] { animation: sheet-up .2s ease-out; }
+    @keyframes sheet-up { from { transform: translateY(14px); } }
+  }
+}
+.sheet form { padding: 18px 16px 16px; display: grid; gap: 12px; }
+.sheet h2 { margin: 0; font-size: 17px; font-weight: 650; }
+.sheet label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 550; }
+.sheet textarea.field { min-height: 76px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: 999px; min-height: 32px; padding: 0 12px; font-size: 13px; cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.sheet-actions { display: flex; gap: 8px; margin-top: 4px; }
+.sheet-actions .btn { flex: 1; }

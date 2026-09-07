@@ -51,6 +51,7 @@ export default function Board() {
   const [filter, setFilter] = useState<"all" | "due">("all");
   const [open, setOpen] = useState<string | null>(null);
   const [undo, setUndo] = useState<Task | null>(null);
+  const [adding, setAdding] = useState(false);
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("denied");
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -126,15 +127,19 @@ export default function Board() {
     load();
   }
 
-  async function add() {
+  async function add(draft: { title: string; client: string; due_at: string | null }) {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "" }),
+      body: JSON.stringify({ ...draft, source_kind: "note" }),
     });
-    const created = await res.json();
-    setTasks((ts) => [...created, ...ts!]);
-    setOpen(created[0]?.id ?? null);
+    const body = await res.json();
+    if (!res.ok) {
+      setErr(body.error ?? "Could not add that task");
+      return false;
+    }
+    setTasks((ts) => [...body, ...ts!]);
+    return true;
   }
 
   if (err && !tasks) return <p className="err">{err}</p>;
@@ -226,7 +231,7 @@ export default function Board() {
       )}
 
       <div className="bar">
-        <button className="btn" onClick={add}>
+        <button className="btn is-primary" onClick={() => setAdding(true)}>
           + Task
         </button>
         <button
@@ -246,6 +251,13 @@ export default function Board() {
         )}
       </div>
 
+      <AddTask
+        open={adding}
+        close={() => setAdding(false)}
+        add={add}
+        clients={[...new Set(tasks.map((t) => t.client?.trim()).filter(Boolean))] as string[]}
+      />
+
       {undo && (
         <div className="undo" role="status">
           <span>Removed “{undo.title || "Untitled"}”</span>
@@ -253,6 +265,142 @@ export default function Board() {
         </div>
       )}
     </>
+  );
+}
+
+/** A datetime-local value at 18:00 on that day — how the parser dates a bare day. */
+function at18(d: Date) {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T18:00`;
+}
+
+const QUICK: [string, () => Date][] = [
+  ["Today", () => new Date()],
+  ["Tomorrow", () => new Date(Date.now() + 864e5)],
+  ["Next week", () => new Date(Date.now() + 7 * 864e5)],
+];
+
+function AddTask({
+  open,
+  close,
+  add,
+  clients,
+}: {
+  open: boolean;
+  close: () => void;
+  add: (d: { title: string; client: string; due_at: string | null }) => Promise<boolean>;
+  clients: string[];
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [title, setTitle] = useState("");
+  const [client, setClient] = useState("");
+  const [due, setDue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    if (!open && el.open) el.close();
+  }, [open]);
+
+  function reset() {
+    setTitle("");
+    setClient("");
+    setDue("");
+  }
+
+  /** Tapping the active chip again clears the date. */
+  function quick(make: () => Date) {
+    const v = at18(make());
+    setDue(due === v ? "" : v);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    const ok = await add({
+      title: title.trim(),
+      client: client.trim(),
+      due_at: due ? new Date(due).toISOString() : null,
+    });
+    setBusy(false);
+    if (ok) {
+      reset();
+      close();
+    }
+  }
+
+  return (
+    <dialog className="sheet" ref={ref} onClose={close} aria-labelledby="add-title">
+      <form onSubmit={submit}>
+        <h2 id="add-title">New task</h2>
+
+        <label>
+          Task
+          <textarea
+            className="field"
+            value={title}
+            autoFocus
+            placeholder="What needs doing?"
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
+          />
+        </label>
+
+        <label>
+          Client
+          {/* datalist: suggests the clients already on the board, still free text */}
+          <input
+            className="field"
+            list="known-clients"
+            value={client}
+            placeholder="Optional"
+            onChange={(e) => setClient(e.target.value)}
+          />
+          <datalist id="known-clients">
+            {clients.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </label>
+
+        <label>
+          Due
+          <div className="chips">
+            {QUICK.map(([label, make]) => (
+              <button
+                key={label}
+                type="button"
+                className="chip"
+                aria-pressed={due === at18(make())}
+                onClick={() => quick(make)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <input
+            className="field"
+            type="datetime-local"
+            value={due}
+            onChange={(e) => setDue(e.target.value)}
+          />
+        </label>
+
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={close}>
+            Cancel
+          </button>
+          <button type="submit" className="btn is-primary" disabled={busy || !title.trim()}>
+            {busy ? "Adding…" : "Add task"}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
