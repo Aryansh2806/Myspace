@@ -24,6 +24,9 @@ const Result = z.object({
       client: z.string().nullable().describe("Person or company who wants it, else null"),
       due_at: z.string().nullable().describe("ISO 8601 with offset, else null"),
       source: z.string().describe("The message text this came from, verbatim"),
+      priority: z
+        .enum(["high", "normal", "low"])
+        .describe("high only when the sender signalled urgency; otherwise normal"),
     }),
   ),
 });
@@ -52,6 +55,11 @@ Rules:
   when the message gives both, so the same client groups together across messages.
   Fall back to the sender's name when there is no company.
 - source is the verbatim message the task came from, so Aryan can check it.
+- priority is "high" ONLY when the sender actually signalled urgency — "urgent",
+  "asap", "immediately", "jaldi", "turant", an explicit escalation, or a same-day
+  deadline. "low" for explicit "whenever", "no rush", "baad mein", "koi jaldi
+  nahi". Everything else is "normal". A polite deadline is not urgency; if you
+  mark everything high, nothing is high.
 - If nothing is actionable, return an empty tasks array. That is a normal answer.`;
 }
 

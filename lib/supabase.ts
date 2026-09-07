@@ -7,6 +7,8 @@ export const db = createClient(
   { auth: { persistSession: false } },
 );
 
+export type Priority = "high" | "normal" | "low";
+
 export type Task = {
   id: string;
   title: string;
@@ -15,5 +17,6 @@ export type Task = {
   source: string | null;
   source_kind: string | null;
   status: "open" | "done" | "dropped";
+  priority: Priority;
   created_at: string;
 };

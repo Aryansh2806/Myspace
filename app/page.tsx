@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/supabase";
-import { selectDue, endOfDay } from "@/lib/due.mjs";
+import { selectDue, endOfDay, sortTasks, nextPriority } from "@/lib/due.mjs";
+import type { Priority } from "@/lib/supabase";
 
 const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
 
@@ -127,7 +128,7 @@ export default function Board() {
     load();
   }
 
-  async function add(draft: { title: string; client: string; due_at: string | null }) {
+  async function add(draft: { title: string; client: string; due_at: string | null; priority: Priority }) {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -215,7 +216,7 @@ export default function Board() {
               {client} <span className="count">{groups.get(client)!.length}</span>
             </h2>
             <ul className="list">
-              {groups.get(client)!.map((t) => (
+              {sortTasks(groups.get(client)!).map((t) => (
                 <Row
                   key={t.id}
                   t={t}
@@ -288,13 +289,14 @@ function AddTask({
 }: {
   open: boolean;
   close: () => void;
-  add: (d: { title: string; client: string; due_at: string | null }) => Promise<boolean>;
+  add: (d: { title: string; client: string; due_at: string | null; priority: Priority }) => Promise<boolean>;
   clients: string[];
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [title, setTitle] = useState("");
   const [client, setClient] = useState("");
   const [due, setDue] = useState("");
+  const [pri, setPri] = useState<Priority>("normal");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -308,6 +310,7 @@ function AddTask({
     setTitle("");
     setClient("");
     setDue("");
+    setPri("normal");
   }
 
   /** Tapping the active chip again clears the date. */
@@ -324,6 +327,7 @@ function AddTask({
       title: title.trim(),
       client: client.trim(),
       due_at: due ? new Date(due).toISOString() : null,
+      priority: pri,
     });
     setBusy(false);
     if (ok) {
@@ -391,6 +395,23 @@ function AddTask({
           />
         </label>
 
+        <label>
+          Priority
+          <div className="chips">
+            {(["high", "normal", "low"] as Priority[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                className="chip"
+                aria-pressed={pri === p}
+                onClick={() => setPri(p)}
+              >
+                {p === "high" ? "High" : p === "normal" ? "Normal" : "Low"}
+              </button>
+            ))}
+          </div>
+        </label>
+
         <div className="sheet-actions">
           <button type="button" className="btn" onClick={close}>
             Cancel
@@ -420,9 +441,10 @@ function Row({
   const [editingDate, setEditingDate] = useState(false);
   const state = stateOf(t);
   const done = t.status === "done";
+  const pri: Priority = t.priority ?? "normal";
 
   return (
-    <li className={`task${done ? " is-done" : ""}`}>
+    <li className={`task${done ? " is-done" : ""}${pri === "high" && !done ? " pri-high" : ""}`}>
       <input
         className="task-check"
         type="checkbox"
@@ -450,6 +472,16 @@ function Row({
       />
 
       <div className="task-meta">
+        <button
+          className={`pill pri is-${pri}`}
+          aria-label={`Priority: ${pri}. Change`}
+          title={`Priority: ${pri} — click to change`}
+          onClick={() => patch(t.id, { priority: nextPriority(pri) })}
+        >
+          <span className="dot" aria-hidden="true" />
+          {pri !== "normal" && (pri === "high" ? "High" : "Low")}
+        </button>
+
         {editingDate || (state !== "undated" && open) ? (
           <label className="pill is-static">
             <input

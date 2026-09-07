@@ -229,3 +229,17 @@ textarea.field { min-height: 40vh; resize: vertical; line-height: 1.5; }
 .chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .sheet-actions { display: flex; gap: 8px; margin-top: 4px; }
 .sheet-actions .btn { flex: 1; }
+
+/* ---------- priority ---------- */
+.pri { gap: 6px; padding-left: 8px; }
+.pri .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1.5px solid currentColor; flex: none;
+}
+.pri.is-high { color: var(--danger); background: var(--danger-bg); border-color: transparent; font-weight: 600; }
+.pri.is-high .dot { background: currentColor; }
+.pri.is-low { color: var(--muted); }
+.pri.is-low .dot { border-style: dashed; }
+/* Normal is the default, so it stays a bare dot with no label. */
+.pri.is-normal { padding-right: 8px; }
+.task.pri-high { box-shadow: inset 3px 0 0 var(--danger); }

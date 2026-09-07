@@ -14,3 +14,9 @@ create index if not exists tasks_due_idx on tasks (status, due_at);
 
 -- Single-user app: only the service-role key (server-side) touches this table.
 alter table tasks enable row level security;
+
+-- Priority. Also shipped as migrations/001_priority.sql for existing databases.
+alter table tasks
+  add column if not exists priority text not null default 'normal'
+  check (priority in ('high', 'normal', 'low'));
+create index if not exists tasks_priority_idx on tasks (status, priority, due_at);

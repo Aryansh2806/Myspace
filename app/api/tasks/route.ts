@@ -3,6 +3,9 @@ import { db } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+// The DB has a check constraint; this keeps a bad value from becoming a 500.
+const PRIORITIES = new Set(["high", "normal", "low"]);
+
 export async function GET() {
   const { data, error } = await db
     .from("tasks")
@@ -24,6 +27,7 @@ export async function POST(req: Request) {
       due_at: t.due_at || null,
       source: t.source ?? null,
       source_kind: t.source_kind ?? "note",
+      priority: PRIORITIES.has(t.priority) ? t.priority : "normal",
     }))
     .filter((t) => t.title);
 
@@ -38,7 +42,7 @@ export async function PATCH(req: Request) {
   const { id, ...fields } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const allowed = ["title", "client", "due_at", "status"] as const;
+  const allowed = ["title", "client", "due_at", "status", "priority"] as const;
   const patch = Object.fromEntries(
     allowed.filter((k) => k in fields).map((k) => [k, fields[k] === "" ? null : fields[k]]),
   );
