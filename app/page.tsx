@@ -597,6 +597,7 @@ function Row({
         if (Math.abs(dx) < 10) return;                 // hysteresis
         if (Math.abs(dx) < Math.abs(ev.clientY - e.clientY)) return; // it's a scroll
         committed = true;
+        li.classList.add("is-swiping");
         li.setPointerCapture(ev.pointerId);
       }
       hist.push({ p: ev.clientX, t: performance.now() });
@@ -611,6 +612,7 @@ function Row({
       li.removeEventListener("pointerup", onUp);
       li.removeEventListener("pointercancel", onUp);
       if (!committed) return;
+      const unsolidify = () => li.classList.remove("is-swiping");
       hist.push({ p: ev.clientX, t: performance.now() });
       const v = velocityFrom(hist, performance.now());
       if (sp.x + project(v) > SWIPE_COMMIT) {
@@ -619,9 +621,11 @@ function Row({
         // completion whenever rAF is throttled — a backgrounded tab, a
         // low-power device — and the row would slide away having saved nothing.
         patch(t.id, { status: "done" });
+        sp.onRest = () => { sp.onRest = () => {}; unsolidify(); };
         sp.to(width, v);
       } else {
         sp.damping = Math.abs(v) > 320 ? 0.8 : 1;      // bounce only after a real flick
+        sp.onRest = () => { sp.onRest = () => {}; unsolidify(); };
         sp.to(0, v);
       }
     };

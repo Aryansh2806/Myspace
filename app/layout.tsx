@@ -15,6 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <div className="aurora" aria-hidden="true">
+          <i className="a" /><i className="b" /><i className="c" />
+        </div>
         <div className="shell">
           <header className="topbar">
             <h1 className="brand">My Todos</h1>

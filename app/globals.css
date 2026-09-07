@@ -16,6 +16,14 @@
   --ok: #1f6b3f;
   --radius: 12px;
   --tap: 44px;
+  /* Glass sits over the aurora; kept opaque enough that text contrast holds
+     (checked in lib/contrast.test.mjs by compositing it over --bg). */
+  --glass: rgba(255,255,255,0.72);
+  --glass-edge: rgba(255,255,255,0.85);
+  --aurora-a: #6fb6ff;
+  --aurora-b: #4fd6c1;
+  --aurora-c: #ffb27f;
+  --aurora-op: 0.42;
   color-scheme: light;
 }
 :root:not([data-theme="light"]) {
@@ -26,6 +34,12 @@
     --danger: #ff9083; --danger-bg: #2e1a17;
     --warn: #e8b25e; --warn-bg: #2a2113;
     --ok: #7bc99a;
+    --glass: rgba(30,38,52,0.66);
+    --glass-edge: rgba(255,255,255,0.12);
+    --aurora-a: #1f5fd0;
+    --aurora-b: #0e8f86;
+    --aurora-c: #b4541f;
+    --aurora-op: 0.34;
     color-scheme: dark;
   }
 }
@@ -36,8 +50,28 @@
   --danger: #ff9083; --danger-bg: #2e1a17;
   --warn: #e8b25e; --warn-bg: #2a2113;
   --ok: #7bc99a;
+  --glass: rgba(30,38,52,0.66);
+  --glass-edge: rgba(255,255,255,0.12);
+  --aurora-a: #1f5fd0;
+  --aurora-b: #0e8f86;
+  --aurora-c: #b4541f;
+  --aurora-op: 0.34;
   color-scheme: dark;
 }
+
+/* The aurora exists so the glass has something to blur. backdrop-filter over a
+   flat ground is decoration doing no work. */
+.aurora {
+  position: fixed; inset: -30%; z-index: 0; pointer-events: none;
+  filter: blur(64px); opacity: var(--aurora-op); contain: strict;
+}
+.aurora i { position: absolute; border-radius: 50%; display: block; }
+.aurora .a { width: 62vmax; height: 62vmax; left: -10vmax; top: -8vmax;  background: var(--aurora-a); animation: drift-a 38s ease-in-out infinite alternate; }
+.aurora .b { width: 54vmax; height: 54vmax; right: -12vmax; top: 20vmax; background: var(--aurora-b); animation: drift-b 45s ease-in-out infinite alternate; }
+.aurora .c { width: 46vmax; height: 46vmax; left: 16vmax; bottom: -14vmax; background: var(--aurora-c); animation: drift-c 52s ease-in-out infinite alternate; }
+@keyframes drift-a { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.12); } }
+@keyframes drift-b { to { transform: translate3d(-10vmax, 4vmax, 0) scale(1.07); } }
+@keyframes drift-c { to { transform: translate3d(6vmax, -8vmax, 0) scale(1.15); } }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -53,7 +87,10 @@ body {
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
 /* ---------- shell ---------- */
-.shell { max-width: 720px; margin: 0 auto; padding: 0 16px calc(96px + env(safe-area-inset-bottom)); }
+.shell {
+  position: relative; z-index: 1;   /* above the fixed aurora, which is z-index 0 */
+  max-width: 720px; margin: 0 auto; padding: 0 16px calc(96px + env(safe-area-inset-bottom));
+}
 .topbar {
   position: sticky; top: 0; z-index: 10;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -73,7 +110,8 @@ body {
 /* ---------- stat strip ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .stat {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--glass); border: 1px solid var(--glass-edge); border-radius: var(--radius);
+  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
   padding: 10px 8px; text-align: center; min-width: 0;
 }
 .stat b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; }
@@ -88,8 +126,9 @@ body {
   text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
 }
 .group-head .count { font-weight: 500; letter-spacing: 0; text-transform: none; }
-.list { list-style: none; margin: 0; padding: 0; background: var(--surface);
-        border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.list { list-style: none; margin: 0; padding: 0; background: transparent;
+        border: 1px solid var(--glass-edge); border-radius: var(--radius); overflow: hidden;
+        box-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 10px 30px rgb(0 0 0 / .06); }
 .list > li + li { border-top: 1px solid var(--line); }
 /* ---------- task row ---------- */
 .task {
@@ -127,7 +166,8 @@ body {
 
 .pill {
   display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid var(--line); background: var(--surface);
+  border: 1px solid var(--glass-edge); background: var(--glass);
+  backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%);
   border-radius: 999px; padding: 4px 10px; min-height: 28px;
   font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap;
 }
@@ -155,15 +195,17 @@ body {
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--tap); padding: 0 18px; border-radius: 11px;
-  border: 1px solid var(--line); background: var(--surface); cursor: pointer;
+  border: 1px solid var(--glass-edge); background: var(--glass); cursor: pointer;
+  backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
   font-size: 15px; font-weight: 550;
 }
 .btn.is-primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: default; }
 .toggle {
   display: inline-flex; align-items: center; gap: 7px; min-height: var(--tap);
-  padding: 0 14px; border: 1px solid var(--line); border-radius: 11px;
-  background: var(--surface); font-size: 14px; color: var(--muted); cursor: pointer;
+  padding: 0 14px; border: 1px solid var(--glass-edge); border-radius: 11px;
+  background: var(--glass); font-size: 14px; color: var(--muted); cursor: pointer;
+  backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
 }
 .toggle input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
 
@@ -198,8 +240,9 @@ textarea.field { min-height: 40vh; resize: vertical; line-height: 1.5; }
 
 /* ---------- add-task dialog (native <dialog>: focus trap + Esc for free) ---------- */
 .sheet {
-  border: 0; padding: 0; color: var(--text); background: var(--surface);
-  border: 1px solid var(--line); border-radius: 18px;
+  border: 0; padding: 0; color: var(--text); background: var(--glass);
+  border: 1px solid var(--glass-edge); border-radius: 18px;
+  backdrop-filter: blur(34px) saturate(200%); -webkit-backdrop-filter: blur(34px) saturate(200%);
   width: min(430px, calc(100% - 20px));
   box-shadow: 0 24px 60px rgb(0 0 0 / .28);
 }
@@ -302,6 +345,37 @@ textarea.field { min-height: 40vh; resize: vertical; line-height: 1.5; }
   gap: 8px; padding-left: 18px; background: var(--ok); color: #fff;
   font-size: 13.5px; font-weight: 600; opacity: 0;
 }
-.swipe .task { background: var(--surface); position: relative; will-change: transform; }
+.swipe .task {
+  position: relative; will-change: transform;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(180%); -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+/* Mid-swipe the row must hide the green underneath it, and blurring a moving
+   layer is expensive — so it goes solid for the duration of the gesture. */
+.swipe.is-swiping .task {
+  background: var(--surface);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
 .list > .swipe + .swipe > .task { border-top: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- material fallbacks ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .aurora i { animation: none !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .aurora { display: none; }
+  .stat, .list, .swipe .task, .pill, .btn, .toggle, .sheet {
+    background: var(--surface) !important;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    border-color: var(--line);
+  }
+  .list { background: var(--surface) !important; }
+}
+@media (prefers-contrast: more) {
+  .aurora { opacity: .12; }
+  .stat, .list, .swipe .task, .pill, .btn, .toggle, .sheet {
+    background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-color: var(--muted);
+  }
+}
