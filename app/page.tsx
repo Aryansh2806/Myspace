@@ -4,8 +4,62 @@ import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/supabase";
 import { selectDue, endOfDay, sortTasks, nextPriority, sortManual, positionFor } from "@/lib/due.mjs";
 import type { Priority } from "@/lib/supabase";
+import { Spring, project, rubberband, velocityFrom } from "@/lib/spring.mjs";
 
 const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
+const SWIPE_COMMIT = 92;   // px the row must reach — or be thrown past — to complete
+
+const reducedMotion = () =>
+  typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Done vs everything still on the board. Springs so a completion feels earned. */
+function Ring({ done, total }: { done: number; total: number }) {
+  const R = 36;
+  const C = 2 * Math.PI * R;
+  const circle = useRef<SVGCircleElement>(null);
+  const label = useRef<HTMLElement>(null);
+  const spring = useRef<Spring | null>(null);
+  const count = useRef<Spring | null>(null);
+
+  useEffect(() => {
+    const pct = total ? done / total : 0;
+    if (!spring.current) {
+      // First paint is at rest — no counting up from zero on load.
+      spring.current = new Spring(pct, {
+        response: 0.55, reduced: reducedMotion(),
+        onUpdate: (v) => circle.current?.setAttribute("stroke-dashoffset", String(C * (1 - v))),
+      });
+      count.current = new Spring(done, {
+        response: 0.5, reduced: reducedMotion(),
+        onUpdate: (v) => { if (label.current) label.current.textContent = String(Math.round(v)); },
+      });
+      spring.current.set(pct);
+      count.current.set(done);
+    } else {
+      spring.current.to(pct);
+      count.current!.to(done);
+    }
+  }, [done, total, C]);
+
+  return (
+    <div className="ring">
+      <svg width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">
+        <circle className="track" cx="42" cy="42" r={R} fill="none" strokeWidth="7" />
+        <circle
+          ref={circle} className="fill" cx="42" cy="42" r={R} fill="none" strokeWidth="7"
+          strokeDasharray={C} strokeDashoffset={C}
+        />
+      </svg>
+      <p className="cap">
+        <b ref={label}>{done}</b>
+        <span>of {total}</span>
+      </p>
+      <span className="sr-only">
+        {done} of {total} done
+      </span>
+    </div>
+  );
+}
 
 const toInput = (iso: string | null) => {
   if (!iso) return "";
@@ -210,11 +264,9 @@ export default function Board() {
 
   return (
     <>
-      <div className="stats">
-        <div className="stat">
-          <b>{counts.open}</b>
-          <span>Open</span>
-        </div>
+      <div className="hero">
+        <Ring done={tasks.length - live.length} total={tasks.length} />
+        <div className="stats">
         <div className={`stat${counts.overdue ? " is-danger" : ""}`}>
           <b>{counts.overdue}</b>
           <span>Overdue</span>
@@ -224,8 +276,9 @@ export default function Board() {
           <span>Today</span>
         </div>
         <div className="stat">
-          <b>{counts.undated}</b>
-          <span>No date</span>
+          <b>{counts.open}</b>
+          <span>Open</span>
+        </div>
         </div>
       </div>
 
@@ -506,6 +559,77 @@ function Row({
   const done = t.status === "done";
   const pri: Priority = t.priority ?? "normal";
   const dragging = drag?.id === t.id;
+  const rowEl = useRef<HTMLDivElement>(null);
+  const behindEl = useRef<HTMLDivElement>(null);
+  const swipe = useRef<Spring | null>(null);
+
+  /* Swipe right to complete. 1:1 with the finger; whether it commits is
+     decided by PROJECTED momentum, so a fast flick from halfway still lands.
+     touch-action: pan-y on the wrapper leaves vertical scrolling to the
+     browser, and the gesture never starts on a control or the text field. */
+  function swipeStart(e: React.PointerEvent<HTMLLIElement>) {
+    if (done || e.pointerType === "mouse") return;
+    if ((e.target as HTMLElement).closest("button, input, textarea, label, a")) return;
+
+    const li = e.currentTarget;
+    const width = li.offsetWidth;
+    if (!swipe.current) {
+      swipe.current = new Spring(0, {
+        response: 0.35,
+        reduced: reducedMotion(),
+        onUpdate: (v) => {
+          if (rowEl.current) rowEl.current.style.transform = `translate3d(${v}px,0,0)`;
+          if (behindEl.current) behindEl.current.style.opacity = String(Math.min(1, v / SWIPE_COMMIT));
+        },
+      });
+    }
+    const sp = swipe.current;
+    sp.halt(); // grab it mid-flight rather than waiting for it to settle
+
+    const startX = e.clientX;
+    const base = sp.x;
+    const hist = [{ p: e.clientX, t: performance.now() }];
+    let committed = false;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (!committed) {
+        if (Math.abs(dx) < 10) return;                 // hysteresis
+        if (Math.abs(dx) < Math.abs(ev.clientY - e.clientY)) return; // it's a scroll
+        committed = true;
+        li.setPointerCapture(ev.pointerId);
+      }
+      hist.push({ p: ev.clientX, t: performance.now() });
+      if (hist.length > 6) hist.shift();
+      let next = base + dx;
+      if (next < 0) next = -rubberband(-next, width);  // leftwards is not a gesture here
+      sp.set(next);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      li.removeEventListener("pointermove", onMove);
+      li.removeEventListener("pointerup", onUp);
+      li.removeEventListener("pointercancel", onUp);
+      if (!committed) return;
+      hist.push({ p: ev.clientX, t: performance.now() });
+      const v = velocityFrom(hist, performance.now());
+      if (sp.x + project(v) > SWIPE_COMMIT) {
+        if (navigator.vibrate) try { navigator.vibrate(12); } catch {}
+        // Write first, animate second. Gating the save on onRest loses the
+        // completion whenever rAF is throttled — a backgrounded tab, a
+        // low-power device — and the row would slide away having saved nothing.
+        patch(t.id, { status: "done" });
+        sp.to(width, v);
+      } else {
+        sp.damping = Math.abs(v) > 320 ? 0.8 : 1;      // bounce only after a real flick
+        sp.to(0, v);
+      }
+    };
+
+    li.addEventListener("pointermove", onMove);
+    li.addEventListener("pointerup", onUp);
+    li.addEventListener("pointercancel", onUp);
+  }
   const dropHere = drag?.group === group && drag.to === index && drag.id !== t.id;
 
   /* Drag lives on the handle only, so a swipe anywhere else still scrolls the
@@ -550,12 +674,20 @@ function Row({
   }
 
   return (
-    <li
-      className={
-        `task${done ? " is-done" : ""}${pri === "high" && !done ? " pri-high" : ""}` +
-        `${manual ? " has-grip" : ""}${dragging ? " is-dragging" : ""}${dropHere ? " drop-here" : ""}`
-      }
-    >
+    <li className="swipe" onPointerDown={swipeStart}>
+      <div className="behind" ref={behindEl} aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 12.5 9.5 18 20 6.5" />
+        </svg>
+        Done
+      </div>
+      <div
+        ref={rowEl}
+        className={
+          `task${done ? " is-done" : ""}${pri === "high" && !done ? " pri-high" : ""}` +
+          `${manual ? " has-grip" : ""}${dragging ? " is-dragging" : ""}${dropHere ? " drop-here" : ""}`
+        }
+      >
       {manual && (
         <button
           className="grip"
@@ -661,6 +793,7 @@ function Row({
           {t.source}
         </div>
       )}
+      </div>
     </li>
   );
 }
