@@ -145,7 +145,7 @@ export default function Inbox() {
     <>
       <h2 className="railhead">Paste anything</h2>
       <textarea
-        className="field"
+        className="field paste-field"
         placeholder="A WhatsApp message, an email, a note to self — or drop a WhatsApp _chat.txt export here."
         value={text}
         onChange={(e) => setText(e.target.value)}

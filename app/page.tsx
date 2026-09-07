@@ -502,6 +502,23 @@ function AddTask({
     return slide.current;
   }
 
+  // With a modal open, a drag anywhere still scrolls the page underneath on
+  // iOS, and the whole sheet appears to drift. Freeze the page instead.
+  useEffect(() => {
+    if (!open) return;
+    const y = window.scrollY;
+    const body = document.body;
+    const prev = body.style.cssText;
+    body.style.position = "fixed";
+    body.style.top = `-${y}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    return () => {
+      body.style.cssText = prev;
+      window.scrollTo(0, y);
+    };
+  }, [open]);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
