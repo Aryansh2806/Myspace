@@ -5,12 +5,93 @@ import type { Task } from "@/lib/supabase";
 import { selectDue, endOfDay, sortTasks, nextPriority, sortManual, positionFor } from "@/lib/due.mjs";
 import type { Priority } from "@/lib/supabase";
 import { Spring, project, rubberband, velocityFrom } from "@/lib/spring.mjs";
+import { streakLength, history } from "@/lib/streak.mjs";
 
 const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
 const SWIPE_COMMIT = 92;   // px the row must reach — or be thrown past — to complete
 
 const reducedMotion = () =>
   typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Consecutive days you finished something. Amber already means "due today",
+    so the streak gets its own colour rather than overloading it. */
+function Streak({ days }: { days: number }) {
+  const flame = useRef<SVGPathElement>(null);
+  const seen = useRef(days);
+  useEffect(() => {
+    if (days > seen.current && flame.current && !reducedMotion()) {
+      const el = flame.current;
+      const s = new Spring(1, { response: 0.4, damping: 0.6, onUpdate: (v) => (el.style.transform = `scale(${v})`) });
+      s.onRest = () => { s.onRest = () => {}; s.to(1); };
+      s.to(1.35);
+    }
+    seen.current = days;
+  }, [days]);
+
+  return (
+    <span className={`streak${days === 0 ? " is-cold" : ""}`} title="Days in a row you finished something">
+      <svg width="13" height="15" viewBox="0 0 15 17" fill="none" aria-hidden="true">
+        <path ref={flame} className="flame"
+          d="M7.5 1S3 5 3 9a4.5 4.5 0 1 0 9 0c0-1.6-.9-3-1.8-4 .2 1.4-.5 2.3-1.2 2.3C7.7 7.3 7.5 4.6 7.5 1Z"
+          fill="currentColor" />
+      </svg>
+      {days}
+      <span className="sr-only"> day streak</span>
+    </span>
+  );
+}
+
+/** Seven days of finished work. A quiet day is a zero-height bar, not a gap. */
+function History({ days, streak }: { days: { day: string; count: number }[]; streak: number }) {
+  const peak = Math.max(1, ...days.map((d) => d.count));
+  const total = days.reduce((a, d) => a + d.count, 0);
+  return (
+    <div className="history-wrap">
+      <div className="history" role="img" aria-label={`${total} finished in the last 7 days`}>
+        {days.map((d, i) => (
+          <i
+            key={d.day}
+            className={i === days.length - 1 ? "is-today" : ""}
+            style={{ ["--h" as string]: `${(d.count / peak) * 100}%` }}
+            title={`${new Date(d.day).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}: ${d.count}`}
+          />
+        ))}
+      </div>
+      <div className="history-cap">
+        <Streak days={streak} />
+        <span className="total">{total} finished in 7 days</span>
+      </div>
+    </div>
+  );
+}
+
+/** A +1 that travels to the ring — motion that points at the outcome. */
+function flyPlusOne(from: HTMLElement) {
+  if (reducedMotion()) return;
+  const ring = document.querySelector(".ring");
+  if (!ring) return;
+  const a = from.getBoundingClientRect();
+  const b = ring.getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "plusone";
+  el.textContent = "+1";
+  el.style.left = `${a.left + 24}px`;
+  el.style.top = `${a.top + a.height / 2 - 10}px`;
+  document.body.appendChild(el);
+  const dx = b.left + b.width / 2 - (a.left + 24);
+  const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+  let cx = 0, cy = 0;
+  const paint = () => {
+    el.style.transform = `translate3d(${cx * dx}px, ${cy * dy}px, 0) scale(${1 - cx * 0.35})`;
+    el.style.opacity = String(1 - cx * 0.65);
+  };
+  // X and Y as independent springs: one spring on a 2D distance desyncs.
+  const sx = new Spring(0, { response: 0.55, onUpdate: (v) => { cx = v; paint(); } });
+  const sy = new Spring(0, { response: 0.62, onUpdate: (v) => { cy = v; paint(); } });
+  sy.onRest = () => el.remove();
+  sx.to(1);
+  sy.to(1);
+}
 
 /** Done vs everything still on the board. Springs so a completion feels earned. */
 function Ring({ done, total }: { done: number; total: number }) {
@@ -109,6 +190,7 @@ export default function Board() {
   const [adding, setAdding] = useState(false);
   const [manual, setManual] = useState(false);
   const [drag, setDrag] = useState<{ id: string; group: string; to: number } | null>(null);
+  const [filterClient, setFilterClient] = useState<string | null>(null);
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("denied");
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -245,89 +327,121 @@ export default function Board() {
     undated: live.filter((t) => stateOf(t) === "undated").length,
   };
 
+  const streak = streakLength(tasks);
+  const week = history(tasks);
+
   const visible = tasks
     .filter((t) => showDone || t.status !== "done")
-    .filter((t) => filter === "all" || dueIds.has(t.id));
+    .filter((t) => filter === "all" || dueIds.has(t.id))
+    .filter((t) => !filterClient || (t.client?.trim() || "Unassigned") === filterClient);
 
-  const groups = new Map<string, Task[]>();
-  for (const t of visible) {
-    const k = t.client?.trim() || "Unassigned";
-    groups.set(k, [...(groups.get(k) ?? []), t]);
-  }
-  // Clients with something due float to the top; Unassigned always sinks.
-  const order = [...groups.keys()].sort((a, b) => {
-    if (a === "Unassigned") return 1;
-    if (b === "Unassigned") return -1;
-    const urgent = (k: string) => (groups.get(k)!.some((t) => dueIds.has(t.id)) ? 0 : 1);
-    return urgent(a) - urgent(b) || a.localeCompare(b);
-  });
+  const doneCount = tasks.length - live.length;
+  const headline =
+    counts.open === 0
+      ? "Queue clear. Everything shipped."
+      : `${doneCount === 0 ? "Nothing" : doneCount} done. ${counts.open} to go.`;
+  const clients = [...new Set(tasks.map((t) => t.client?.trim() || "Unassigned"))].sort((a, b) =>
+    a === "Unassigned" ? 1 : b === "Unassigned" ? -1 : a.localeCompare(b),
+  );
+  const ordered = manual ? sortManual(visible) : sortTasks(visible);
+
 
   return (
     <>
       <div className="hero">
-        <Ring done={tasks.length - live.length} total={tasks.length} />
-        <div className="stats">
-        <div className={`stat${counts.overdue ? " is-danger" : ""}`}>
-          <b>{counts.overdue}</b>
-          <span>Overdue</span>
-        </div>
-        <div className={`stat${counts.today ? " is-warn" : ""}`}>
-          <b>{counts.today}</b>
-          <span>Today</span>
-        </div>
-        <div className="stat">
-          <b>{counts.open}</b>
-          <span>Open</span>
-        </div>
+        <Ring done={doneCount} total={tasks.length} />
+        <div>
+          <h2 className="heroline">{headline}</h2>
+          <div className="herofacts">
+            {counts.overdue > 0 && (
+              <span className="fact is-danger"><b>{counts.overdue}</b> overdue</span>
+            )}
+            {counts.today > 0 && (
+              <span className="fact is-warn"><b>{counts.today}</b> due today</span>
+            )}
+            <span className="fact"><b>{counts.open}</b> open</span>
+            <span className="fact"><b>{counts.undated}</b> undated</span>
+          </div>
         </div>
       </div>
 
+      <History days={week} streak={streak} />
+
       {err && <p className="err">{err}</p>}
+
+      {clients.length > 1 && (
+        <>
+          <h2 className="railhead">
+            Clients <span className="n">{clients.length}</span>
+          </h2>
+          <div className="rail">
+            {clients.map((name) => {
+              const mine = tasks.filter((t) => (t.client?.trim() || "Unassigned") === name);
+              const d = mine.filter((t) => t.status === "done").length;
+              return (
+                <button
+                  key={name}
+                  className="client"
+                  aria-pressed={filterClient === name}
+                  onClick={() => setFilterClient(filterClient === name ? null : name)}
+                >
+                  <span className="cname">{name}</span>
+                  <span className="minibar">
+                    <i style={{ width: `${mine.length ? (d / mine.length) * 100 : 0}%` }} />
+                  </span>
+                  <span className="cmeta">
+                    {d}/{mine.length} done
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <h2 className="railhead">
+        {filterClient ?? "Queue"} <span className="n">{visible.length}</span>
+        {filterClient && (
+          <button className="pill" onClick={() => setFilterClient(null)} style={{ marginLeft: "auto" }}>
+            Show all
+          </button>
+        )}
+      </h2>
 
       {visible.length === 0 ? (
         <div className="empty">
-          <p>{filter === "due" ? "Nothing due today." : "No tasks yet."}</p>
-          {filter === "all" && (
+          <p>{filter === "due" ? "Nothing due today." : "No tasks here yet."}</p>
+          {filter === "all" && !filterClient && (
             <a className="btn is-primary" href="/inbox">
               Paste a message
             </a>
           )}
         </div>
       ) : (
-        order.map((client) => (
-          <section key={client}>
-            <h2 className="group-head">
-              {client} <span className="count">{groups.get(client)!.length}</span>
-            </h2>
-            <ul
-              className={`list${drag?.group === client && drag.to === groups.get(client)!.length ? " is-last-drop" : ""}`}
-            >
-              {(manual ? sortManual(groups.get(client)!) : sortTasks(groups.get(client)!)).map((t, i, arr) => (
-                <Row
-                  key={t.id}
-                  t={t}
-                  index={i}
-                  list={arr}
-                  manual={manual}
-                  drag={drag}
-                  setDrag={setDrag}
-                  move={move}
-                  group={client}
-                  open={open === t.id}
-                  toggle={() => setOpen(open === t.id ? null : t.id)}
-                  patch={patch}
-                  drop={drop}
-                />
-              ))}
-            </ul>
-          </section>
-        ))
+        <ul className="stream">
+          {ordered.map((t, i) => (
+            <Row
+              key={t.id}
+              t={t}
+              index={i}
+              list={ordered}
+              manual={manual}
+              drag={drag}
+              setDrag={setDrag}
+              move={move}
+              group="stream"
+              showClient={!filterClient}
+              open={open === t.id}
+              toggle={() => setOpen(open === t.id ? null : t.id)}
+              patch={patch}
+              drop={drop}
+            />
+          ))}
+        </ul>
       )}
 
       <div className="bar">
-        <button className="btn is-primary" onClick={() => setAdding(true)}>
-          + Task
-        </button>
+
         <button
           className="toggle"
           aria-pressed={filter === "due"}
@@ -358,6 +472,15 @@ export default function Board() {
         add={add}
         clients={[...new Set(tasks.map((t) => t.client?.trim()).filter(Boolean))] as string[]}
       />
+
+      <div className="dock">
+        <button className="fab" onClick={() => setAdding(true)}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New task
+        </button>
+      </div>
 
       {undo && (
         <div className="undo" role="status">
@@ -527,6 +650,11 @@ function AddTask({
 
 type Drag = { id: string; group: string; to: number } | null;
 
+function clientPct(list: Task[]) {
+  if (!list.length) return 0;
+  return (list.filter((t) => t.status === "done").length / list.length) * 100;
+}
+
 function Row({
   t,
   index,
@@ -536,6 +664,7 @@ function Row({
   setDrag,
   move,
   group,
+  showClient,
   open,
   toggle,
   patch,
@@ -545,6 +674,7 @@ function Row({
   index: number;
   list: Task[];
   manual: boolean;
+  showClient: boolean;
   drag: Drag;
   setDrag: (d: Drag) => void;
   move: (list: Task[], from: number, to: number) => void;
@@ -620,6 +750,7 @@ function Row({
         // Write first, animate second. Gating the save on onRest loses the
         // completion whenever rAF is throttled — a backgrounded tab, a
         // low-power device — and the row would slide away having saved nothing.
+        if (rowEl.current) flyPlusOne(rowEl.current);
         patch(t.id, { status: "done" });
         sp.onRest = () => { sp.onRest = () => {}; unsolidify(); };
         sp.to(width, v);
@@ -712,7 +843,10 @@ function Row({
         type="checkbox"
         checked={done}
         aria-label={`Mark “${t.title}” done`}
-        onChange={(e) => patch(t.id, { status: e.target.checked ? "done" : "open" })}
+        onChange={(e) => {
+          if (e.target.checked && rowEl.current) flyPlusOne(rowEl.current);
+          patch(t.id, { status: e.target.checked ? "done" : "open" });
+        }}
       />
 
       {/* A textarea, not an input: titles wrap instead of clipping on a phone. */}
@@ -734,6 +868,9 @@ function Row({
       />
 
       <div className="task-meta">
+        {showClient && t.client?.trim() && (
+          <span className="pill is-static client-pill">{t.client.trim()}</span>
+        )}
         <button
           className={`pill pri is-${pri}`}
           aria-label={`Priority: ${pri}. Change`}

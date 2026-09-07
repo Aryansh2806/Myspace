@@ -24,3 +24,8 @@ create index if not exists tasks_priority_idx on tasks (status, priority, due_at
 -- Manual ordering. Also shipped as migrations/002_position.sql.
 alter table tasks add column if not exists position double precision;
 create index if not exists tasks_position_idx on tasks (client, position);
+
+-- Completion timestamps, for the streak and the 7-day history.
+-- Also shipped as migrations/003_done_at.sql.
+alter table tasks add column if not exists done_at timestamptz;
+create index if not exists tasks_done_at_idx on tasks (done_at desc);

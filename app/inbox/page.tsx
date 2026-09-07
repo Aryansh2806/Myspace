@@ -64,11 +64,11 @@ export default function Inbox() {
   if (drafts) {
     return (
       <>
-        <h2 className="group-head">
-          Review <span className="count">{drafts.filter((d) => d.keep).length} of {drafts.length} selected</span>
+        <h2 className="railhead">
+          Review <span className="n">{drafts.filter((d) => d.keep).length} of {drafts.length} selected</span>
         </h2>
         <p className="muted" style={{ marginTop: 0 }}>{note} Nothing is saved until you hit Save.</p>
-        <ul className="list">
+        <ul className="stream">
           {drafts.map((d, i) => (
             <li className="task" key={i}>
               <input
@@ -143,7 +143,7 @@ export default function Inbox() {
 
   return (
     <>
-      <h2 className="group-head">Paste anything</h2>
+      <h2 className="railhead">Paste anything</h2>
       <textarea
         className="field"
         placeholder="A WhatsApp message, an email, a note to self — or drop a WhatsApp _chat.txt export here."

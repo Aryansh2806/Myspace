@@ -19,5 +19,6 @@ export type Task = {
   status: "open" | "done" | "dropped";
   priority: Priority;
   position: number | null;
+  done_at: string | null;
   created_at: string;
 };

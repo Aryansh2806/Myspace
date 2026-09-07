@@ -1,4 +1,5 @@
 import "./globals.css";
+import Topbar from "./topbar";
 
 export const metadata = { title: "My Todos" };
 export const viewport = {
@@ -6,39 +7,33 @@ export const viewport = {
   initialScale: 1,
   viewportFit: "cover" as const,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f7f7f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#121211" },
+    { media: "(prefers-color-scheme: light)", color: "#edf1f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0e15" },
   ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap"
+        />
+      </head>
       <body>
         <div className="aurora" aria-hidden="true">
-          <i className="a" /><i className="b" /><i className="c" />
+          <i className="a" />
+          <i className="b" />
+          <i className="c" />
         </div>
         <div className="shell">
-          <header className="topbar">
-            <h1 className="brand">My Todos</h1>
-            <Nav />
-          </header>
+          <Topbar />
           {children}
         </div>
       </body>
     </html>
-  );
-}
-
-function Nav() {
-  return (
-    <nav aria-label="Main">
-      <a className="tab" href="/">
-        Board
-      </a>
-      <a className="tab" href="/inbox">
-        Paste
-      </a>
-    </nav>
   );
 }

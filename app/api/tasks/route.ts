@@ -47,6 +47,11 @@ export async function PATCH(req: Request) {
   const patch = Object.fromEntries(
     allowed.filter((k) => k in fields).map((k) => [k, fields[k] === "" ? null : fields[k]]),
   );
+  // Stamped server-side: a client clock can be wrong, and the streak depends
+  // on this being the truth about when work was finished.
+  if (patch.status === "done") patch.done_at = new Date().toISOString();
+  if (patch.status === "open") patch.done_at = null;
+
   if (!Object.keys(patch).length) return NextResponse.json({ error: "nothing to update" }, { status: 400 });
 
   const { data, error } = await db.from("tasks").update(patch).eq("id", id).select().single();
