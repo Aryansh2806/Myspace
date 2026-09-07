@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "@/lib/supabase";
-import { selectDue, endOfDay, sortTasks, nextPriority } from "@/lib/due.mjs";
+import { selectDue, endOfDay, sortTasks, nextPriority, sortManual, positionFor } from "@/lib/due.mjs";
 import type { Priority } from "@/lib/supabase";
 
 const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
@@ -53,6 +53,8 @@ export default function Board() {
   const [open, setOpen] = useState<string | null>(null);
   const [undo, setUndo] = useState<Task | null>(null);
   const [adding, setAdding] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [drag, setDrag] = useState<{ id: string; group: string; to: number } | null>(null);
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("denied");
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -66,7 +68,34 @@ export default function Board() {
   useEffect(() => {
     load();
     setPerm(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+    try {
+      setManual(localStorage.getItem("sort") === "manual");
+    } catch {}
   }, []);
+
+  function setSort(m: boolean) {
+    setManual(m);
+    try {
+      localStorage.setItem("sort", m ? "manual" : "auto");
+    } catch {}
+  }
+
+  /** Commit a move within one client group. Only the moved row changes. */
+  async function move(list: Task[], from: number, to: number) {
+    if (to === from || to < 0 || to > list.length) return;
+    const t = list[from];
+    const position = positionFor(list, from, to > from ? to - 1 : to);
+    setTasks((ts) => ts!.map((x) => (x.id === t.id ? { ...x, position } : x)));
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: t.id, position }),
+    });
+    if (!res.ok) {
+      setErr("Could not save the new order.");
+      load();
+    }
+  }
 
   useEffect(() => {
     if (!tasks || perm !== "granted") return;
@@ -129,10 +158,12 @@ export default function Board() {
   }
 
   async function add(draft: { title: string; client: string; due_at: string | null; priority: Priority }) {
+    const peers = tasks!.filter((t) => (t.client?.trim() || "") === draft.client.trim());
+    const top = Math.min(...peers.map((t) => t.position ?? 0), 0);
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...draft, source_kind: "note" }),
+      body: JSON.stringify({ ...draft, source_kind: "note", position: top - 1000 }),
     });
     const body = await res.json();
     if (!res.ok) {
@@ -215,11 +246,20 @@ export default function Board() {
             <h2 className="group-head">
               {client} <span className="count">{groups.get(client)!.length}</span>
             </h2>
-            <ul className="list">
-              {sortTasks(groups.get(client)!).map((t) => (
+            <ul
+              className={`list${drag?.group === client && drag.to === groups.get(client)!.length ? " is-last-drop" : ""}`}
+            >
+              {(manual ? sortManual(groups.get(client)!) : sortTasks(groups.get(client)!)).map((t, i, arr) => (
                 <Row
                   key={t.id}
                   t={t}
+                  index={i}
+                  list={arr}
+                  manual={manual}
+                  drag={drag}
+                  setDrag={setDrag}
+                  move={move}
+                  group={client}
                   open={open === t.id}
                   toggle={() => setOpen(open === t.id ? null : t.id)}
                   patch={patch}
@@ -244,6 +284,13 @@ export default function Board() {
         </button>
         <button className="toggle" aria-pressed={showDone} onClick={() => setShowDone(!showDone)}>
           <input type="checkbox" readOnly checked={showDone} tabIndex={-1} aria-hidden="true" /> Done
+        </button>
+        <button
+          className="toggle sortmode"
+          onClick={() => setSort(!manual)}
+          title={manual ? "Ordered by hand" : "Ordered by priority, then due date"}
+        >
+          Sort: {manual ? "Manual" : "Auto"}
         </button>
         {perm === "default" && (
           <button className="toggle" onClick={() => Notification.requestPermission().then(setPerm)}>
@@ -425,14 +472,30 @@ function AddTask({
   );
 }
 
+type Drag = { id: string; group: string; to: number } | null;
+
 function Row({
   t,
+  index,
+  list,
+  manual,
+  drag,
+  setDrag,
+  move,
+  group,
   open,
   toggle,
   patch,
   drop,
 }: {
   t: Task;
+  index: number;
+  list: Task[];
+  manual: boolean;
+  drag: Drag;
+  setDrag: (d: Drag) => void;
+  move: (list: Task[], from: number, to: number) => void;
+  group: string;
   open: boolean;
   toggle: () => void;
   patch: (id: string, f: Partial<Task>) => void;
@@ -442,9 +505,72 @@ function Row({
   const state = stateOf(t);
   const done = t.status === "done";
   const pri: Priority = t.priority ?? "normal";
+  const dragging = drag?.id === t.id;
+  const dropHere = drag?.group === group && drag.to === index && drag.id !== t.id;
+
+  /* Drag lives on the handle only, so a swipe anywhere else still scrolls the
+     page. Rows are measured once at pointerdown and never reordered mid-drag,
+     so the rects stay valid and the maths cannot drift. */
+  function startDrag(e: React.PointerEvent<HTMLButtonElement>) {
+    const ul = e.currentTarget.closest("ul");
+    if (!ul) return;
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const rows = [...ul.querySelectorAll("li")].map((li) => {
+      const r = li.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+    setDrag({ id: t.id, group, to: index });
+
+    const onMove = (ev: PointerEvent) => {
+      let to = rows.findIndex((mid) => ev.clientY < mid);
+      if (to === -1) to = rows.length;
+      setDrag({ id: t.id, group, to });
+    };
+    const onUp = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      let to = rows.findIndex((mid) => ev.clientY < mid);
+      if (to === -1) to = rows.length;
+      setDrag(null);
+      move(list, index, to);
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
+  /* WCAG 2.5.7: every drag needs a single-pointer / keyboard alternative. */
+  function onGripKey(e: React.KeyboardEvent) {
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      move(list, index, e.key === "ArrowUp" ? index - 1 : index + 2);
+    }
+  }
 
   return (
-    <li className={`task${done ? " is-done" : ""}${pri === "high" && !done ? " pri-high" : ""}`}>
+    <li
+      className={
+        `task${done ? " is-done" : ""}${pri === "high" && !done ? " pri-high" : ""}` +
+        `${manual ? " has-grip" : ""}${dragging ? " is-dragging" : ""}${dropHere ? " drop-here" : ""}`
+      }
+    >
+      {manual && (
+        <button
+          className="grip"
+          onPointerDown={startDrag}
+          onKeyDown={onGripKey}
+          aria-label={`Reorder “${t.title}”, ${index + 1} of ${list.length}. Use arrow keys.`}
+          title="Drag to reorder, or focus and use arrow keys"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+            <circle cx="6" cy="3" r="1.35" /><circle cx="10" cy="3" r="1.35" />
+            <circle cx="6" cy="8" r="1.35" /><circle cx="10" cy="8" r="1.35" />
+            <circle cx="6" cy="13" r="1.35" /><circle cx="10" cy="13" r="1.35" />
+          </svg>
+        </button>
+      )}
       <input
         className="task-check"
         type="checkbox"

@@ -243,3 +243,35 @@ textarea.field { min-height: 40vh; resize: vertical; line-height: 1.5; }
 /* Normal is the default, so it stays a bare dot with no label. */
 .pri.is-normal { padding-right: 8px; }
 .task.pri-high { box-shadow: inset 3px 0 0 var(--danger); }
+
+/* ---------- manual reorder ---------- */
+.grip {
+  grid-area: grip; display: grid; place-items: center;
+  width: 32px; height: var(--tap); margin-left: -6px;
+  border: 0; background: none; color: var(--muted);
+  cursor: grab; border-radius: 9px; touch-action: none; /* we own the gesture */
+}
+.grip:active { cursor: grabbing; }
+.grip:hover { background: var(--sunk); }
+.task.has-grip {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "grip check title del" ".    .     meta  meta";
+}
+@media (min-width: 620px) {
+  .task.has-grip {
+    grid-template-columns: auto auto minmax(0,1fr) auto auto;
+    grid-template-areas: "grip check title meta del";
+  }
+}
+.task.is-dragging { opacity: .4; }
+.task.drop-here { position: relative; }
+.task.drop-here::before {
+  content: ""; position: absolute; left: 10px; right: 10px; top: -1px;
+  height: 2px; background: var(--accent); border-radius: 2px;
+}
+.list.is-last-drop { position: relative; }
+.list.is-last-drop::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px;
+  height: 2px; background: var(--accent); border-radius: 2px;
+}
+.sortmode { margin-left: auto; }

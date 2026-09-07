@@ -28,6 +28,7 @@ export async function POST(req: Request) {
       source: t.source ?? null,
       source_kind: t.source_kind ?? "note",
       priority: PRIORITIES.has(t.priority) ? t.priority : "normal",
+      position: Number.isFinite(t.position) ? t.position : null,
     }))
     .filter((t) => t.title);
 
@@ -42,7 +43,7 @@ export async function PATCH(req: Request) {
   const { id, ...fields } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const allowed = ["title", "client", "due_at", "status", "priority"] as const;
+  const allowed = ["title", "client", "due_at", "status", "priority", "position"] as const;
   const patch = Object.fromEntries(
     allowed.filter((k) => k in fields).map((k) => [k, fields[k] === "" ? null : fields[k]]),
   );

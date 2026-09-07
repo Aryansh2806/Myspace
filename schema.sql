@@ -20,3 +20,7 @@ alter table tasks
   add column if not exists priority text not null default 'normal'
   check (priority in ('high', 'normal', 'low'));
 create index if not exists tasks_priority_idx on tasks (status, priority, due_at);
+
+-- Manual ordering. Also shipped as migrations/002_position.sql.
+alter table tasks add column if not exists position double precision;
+create index if not exists tasks_position_idx on tasks (client, position);
