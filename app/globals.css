@@ -152,7 +152,7 @@ body {
   backdrop-filter: blur(30px) saturate(190%); -webkit-backdrop-filter: blur(30px) saturate(190%);
   border: 1px solid var(--glass-edge); box-shadow: var(--shadow-2);
 }
-.ring { position: relative; width: 104px; height: 104px; flex: none; }
+.ring { position: relative; flex: none; }   /* size is set by the component */
 .ring svg { display: block; transform: rotate(-90deg); }
 .ring .track { stroke: var(--line); }
 .ring .fill { stroke: var(--ok); stroke-linecap: round; }

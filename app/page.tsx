@@ -6,6 +6,7 @@ import { selectDue, endOfDay, sortTasks, nextPriority, sortManual, positionFor }
 import type { Priority } from "@/lib/supabase";
 import { Spring, project, rubberband, velocityFrom } from "@/lib/spring.mjs";
 import { streakLength, history } from "@/lib/streak.mjs";
+import Ring from "./ring";
 
 const NOTIFY_AHEAD_MS = 2 * 60 * 60 * 1000;
 const SWIPE_COMMIT = 92;   // px the row must reach — or be thrown past — to complete
@@ -91,55 +92,6 @@ function flyPlusOne(from: HTMLElement) {
   sy.onRest = () => el.remove();
   sx.to(1);
   sy.to(1);
-}
-
-/** Done vs everything still on the board. Springs so a completion feels earned. */
-function Ring({ done, total }: { done: number; total: number }) {
-  const R = 36;
-  const C = 2 * Math.PI * R;
-  const circle = useRef<SVGCircleElement>(null);
-  const label = useRef<HTMLElement>(null);
-  const spring = useRef<Spring | null>(null);
-  const count = useRef<Spring | null>(null);
-
-  useEffect(() => {
-    const pct = total ? done / total : 0;
-    if (!spring.current) {
-      // First paint is at rest — no counting up from zero on load.
-      spring.current = new Spring(pct, {
-        response: 0.55, reduced: reducedMotion(),
-        onUpdate: (v) => circle.current?.setAttribute("stroke-dashoffset", String(C * (1 - v))),
-      });
-      count.current = new Spring(done, {
-        response: 0.5, reduced: reducedMotion(),
-        onUpdate: (v) => { if (label.current) label.current.textContent = String(Math.round(v)); },
-      });
-      spring.current.set(pct);
-      count.current.set(done);
-    } else {
-      spring.current.to(pct);
-      count.current!.to(done);
-    }
-  }, [done, total, C]);
-
-  return (
-    <div className="ring">
-      <svg width="84" height="84" viewBox="0 0 84 84" aria-hidden="true">
-        <circle className="track" cx="42" cy="42" r={R} fill="none" strokeWidth="7" />
-        <circle
-          ref={circle} className="fill" cx="42" cy="42" r={R} fill="none" strokeWidth="7"
-          strokeDasharray={C} strokeDashoffset={C}
-        />
-      </svg>
-      <p className="cap">
-        <b ref={label}>{done}</b>
-        <span>of {total}</span>
-      </p>
-      <span className="sr-only">
-        {done} of {total} done
-      </span>
-    </div>
-  );
 }
 
 const toInput = (iso: string | null) => {
