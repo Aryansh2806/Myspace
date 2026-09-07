@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { levelFromWaveform } from "@/lib/audio.mjs";
 
 /** Safari records mp4; Chrome and Firefox record webm. Ask, don't assume. */
 const CANDIDATES = [
@@ -35,6 +36,9 @@ export default function VoiceButton({
   const chunks = useRef<Blob[]>([]);
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtx = useRef<AudioContext | null>(null);
+  const raf = useRef<number | null>(null);
+  const shell = useRef<HTMLDivElement>(null);
 
   /** Always release the mic. A live track leaves the recording dot on. */
   function release() {
@@ -42,6 +46,36 @@ export default function VoiceButton({
     stream.current = null;
     if (timer.current) clearInterval(timer.current);
     timer.current = null;
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = null;
+    audioCtx.current?.close().catch(() => {});
+    audioCtx.current = null;
+    shell.current?.style.setProperty("--level", "0");
+  }
+
+  /**
+   * Drive the halo from the actual input level. The one question a recorder
+   * has to answer is "is it hearing me", and a level meter answers it in a way
+   * a spinning icon never can.
+   */
+  function meter(src: MediaStream) {
+    const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    audioCtx.current = ctx;
+    const node = ctx.createMediaStreamSource(src);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.75;
+    node.connect(analyser);
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteTimeDomainData(buf);
+      const level = levelFromWaveform(buf);
+      shell.current?.style.setProperty("--level", level.toFixed(3));
+      raf.current = requestAnimationFrame(tick);
+    };
+    tick();
   }
   useEffect(() => release, []);
 
@@ -76,6 +110,7 @@ export default function VoiceButton({
       void send(blob, fmt.ext);
     };
     mr.start();
+    meter(stream.current);
     setState("recording");
     setSecs(0);
     timer.current = setInterval(() => {
@@ -113,34 +148,39 @@ export default function VoiceButton({
   }
 
   const mmss = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  const caption =
+    state === "recording" ? "Listening — tap to stop"
+    : state === "working" ? "Transcribing…"
+    : idleLabel;
 
   return (
-    <>
+    <div className={`voice is-${state}`} ref={shell}>
       <button
         type="button"
-        className={`btn mic${state === "recording" ? " is-live" : ""}`}
+        className="mic"
         onClick={state === "recording" ? stop : state === "idle" ? start : undefined}
         disabled={state === "working"}
-        aria-live="polite"
+        aria-label={state === "recording" ? `Stop recording, ${mmss}` : "Record a task"}
       >
-        {state === "recording" ? (
-          <>
-            <span className="pulse" aria-hidden="true" />
-            Stop · <span className="clock">{mmss}</span>
-          </>
-        ) : state === "working" ? (
-          "Transcribing…"
-        ) : (
-          <>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <span className="halo" aria-hidden="true" />
+        <span className="face">
+          {state === "recording" ? (
+            <span className="square" aria-hidden="true" />
+          ) : state === "working" ? (
+            <span className="spin" aria-hidden="true" />
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
               <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" />
             </svg>
-            {idleLabel}
-          </>
-        )}
+          )}
+        </span>
       </button>
+      <p className="voice-cap" role="status">
+        {caption}
+        {state === "recording" && <span className="clock"> {mmss}</span>}
+      </p>
       {err && <p className="err">{err}</p>}
-    </>
+    </div>
   );
 }

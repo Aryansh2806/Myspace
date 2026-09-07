@@ -147,10 +147,17 @@ export default function Board() {
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = async () => {
-    const res = await fetch("/api/tasks");
-    const body = await res.json();
-    if (!res.ok) return setErr(body.error ?? "Could not load tasks");
-    setTasks(body);
+    // A rejected fetch — server down, no network — used to leave the board
+    // stuck on "Loading…" with nothing said. Say something instead.
+    try {
+      const res = await fetch("/api/tasks");
+      const body = await res.json();
+      if (!res.ok) return setErr(body.error ?? "Could not load tasks");
+      setErr("");
+      setTasks(body);
+    } catch {
+      setErr("Could not reach the server. Check your connection, then reload.");
+    }
   };
 
   useEffect(() => {
@@ -262,7 +269,15 @@ export default function Board() {
     return true;
   }
 
-  if (err && !tasks) return <p className="err">{err}</p>;
+  if (err && !tasks)
+    return (
+      <div className="empty">
+        <p className="err">{err}</p>
+        <button className="btn" onClick={() => { setErr(""); load(); }}>
+          Try again
+        </button>
+      </div>
+    );
   if (!tasks)
     return (
       <p className="muted" role="status">

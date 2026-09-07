@@ -144,7 +144,24 @@ export default function Inbox() {
 
   return (
     <>
-      <h2 className="railhead">Paste anything</h2>
+      <h2 className="railhead">Speak or paste</h2>
+
+      <div className="capture">
+        <VoiceButton
+          idleLabel="Tap and say what needs doing"
+          onText={(t, meta) => {
+            setText((prev) => (prev ? prev + "\n" + t : t));
+            setNote(
+              `Heard ${meta.seconds ? Math.round(meta.seconds) + "s" : "you"}` +
+                (meta.language ? ` · ${meta.language}` : "") +
+                ". Check the text, then find tasks.",
+            );
+          }}
+        />
+      </div>
+
+      <p className="or"><span>or type it</span></p>
+
       <textarea
         className="field paste-field"
         placeholder="A WhatsApp message, an email, a note to self — or drop a WhatsApp _chat.txt export here."
@@ -161,17 +178,6 @@ export default function Inbox() {
         <button className="btn is-primary" disabled={busy || !text.trim()} onClick={parse}>
           {busy ? "Reading…" : "Find tasks"}
         </button>
-        <VoiceButton
-          idleLabel="Speak"
-          onText={(t, meta) => {
-            setText((prev) => (prev ? prev + "\n" + t : t));
-            setNote(
-              `Heard ${meta.seconds ? Math.round(meta.seconds) + "s" : "you"}` +
-                (meta.language ? ` in ${meta.language}` : "") +
-                ". Check it, then find tasks.",
-            );
-          }}
-        />
         <label className="btn" style={{ cursor: "pointer" }}>
           Upload chat
           <input
