@@ -476,18 +476,103 @@ function AddTask({
   clients: string[];
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const slide = useRef<Spring | null>(null);
   const [title, setTitle] = useState("");
   const [client, setClient] = useState("");
   const [due, setDue] = useState("");
   const [pri, setPri] = useState<Priority>("normal");
   const [busy, setBusy] = useState(false);
 
+  /* The sheet is driven in normalised units: 0 is fully open, 1 is fully off
+     the bottom. Everything — the entrance, the drag and the dismissal — moves
+     the same value, which is what lets you grab it mid-slide. */
+  function sheetSpring() {
+    if (slide.current) return slide.current;
+    const el = ref.current!;
+    slide.current = new Spring(1, {
+      response: 0.34,
+      damping: 0.82,
+      reduced: reducedMotion(),
+      onUpdate: (v) => {
+        el.style.transform = `translate3d(0, ${v * 100}%, 0)`;
+        // On a wide screen it is a centred card, so it fades rather than slides.
+        el.style.opacity = String(Math.max(0, 1 - v * 1.6));
+      },
+    });
+    return slide.current;
+  }
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
+    const sp = sheetSpring();
+    if (open && !el.open) {
+      el.showModal();
+      sp.set(1);
+      sp.damping = 0.82;
+      sp.response = 0.34;
+      sp.to(0);
+    }
+    if (!open && el.open) {
+      // Closing must not depend on the animation finishing. If rAF is
+      // throttled — a backgrounded tab, a slow device — onRest may never
+      // arrive, and the dialog would stay open and refuse to reopen.
+      const shut = () => {
+        clearTimeout(fallback);
+        sp.onRest = () => {};
+        if (ref.current?.open) ref.current.close();
+      };
+      const fallback = setTimeout(shut, 420);
+      sp.onRest = shut;
+      sp.damping = 1;
+      sp.response = 0.28;
+      sp.to(1.05);
+      return () => clearTimeout(fallback);
+    }
   }, [open]);
+
+  /** Drag the sheet down to put it back. Handle only, so the form still works. */
+  function dragStart(e: React.PointerEvent<HTMLDivElement>) {
+    const el = ref.current;
+    if (!el) return;
+    const handle = e.currentTarget;
+    const height = el.offsetHeight || 1;
+    const sp = sheetSpring();
+    sp.halt();                                   // grab it mid-slide
+    handle.setPointerCapture(e.pointerId);
+
+    const startY = e.clientY;
+    const base = sp.x;
+    const hist = [{ p: e.clientY, t: performance.now() }];
+
+    const onMove = (ev: PointerEvent) => {
+      hist.push({ p: ev.clientY, t: performance.now() });
+      if (hist.length > 6) hist.shift();
+      let next = base + (ev.clientY - startY) / height;
+      // Pulling up past open resists instead of stopping dead.
+      if (next < 0) next = -rubberband(-next * height, height) / height;
+      sp.set(next);
+    };
+    const onUp = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      hist.push({ p: ev.clientY, t: performance.now() });
+      const v = velocityFrom(hist, performance.now());
+      // Dismiss on where the throw lands, not on how far it was dragged.
+      const projected = (sp.x * height + project(v)) / height;
+      if (projected > 0.4) {
+        close();
+      } else {
+        sp.damping = 0.82;
+        sp.response = 0.34;
+        sp.to(0, v / height);
+      }
+    };
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
 
   function reset() {
     setTitle("");
@@ -521,6 +606,9 @@ function AddTask({
 
   return (
     <dialog className="sheet" ref={ref} onClose={close} aria-labelledby="add-title">
+      <div className="grabber" onPointerDown={dragStart} aria-hidden="true">
+        <span />
+      </div>
       <form onSubmit={submit}>
         <h2 id="add-title">New task</h2>
 

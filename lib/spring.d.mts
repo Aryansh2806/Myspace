@@ -14,4 +14,5 @@ export class Spring {
 }
 export function project(velocity: number, decel?: number): number;
 export function rubberband(overshoot: number, dimension: number, c?: number): number;
+export const MAX_FLICK: number;
 export function velocityFrom(history: { p: number; t: number }[], now: number, windowMs?: number): number;
