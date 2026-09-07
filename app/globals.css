@@ -133,6 +133,17 @@ body {
   color: var(--muted); cursor: pointer; box-shadow: var(--shadow-1);
 }
 
+/* ---------- desktop: a column of context beside the queue ----------
+   Without this the hero stretches to the full 1080px and holds a third of
+   that in content, which reads as a mistake rather than as space. */
+@media (min-width: 900px) {
+  .layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 26px; align-items: start; }
+  .layout > .side { position: sticky; top: 20px; }
+  .hero { grid-template-columns: auto 1fr; }
+  .rail { flex-wrap: wrap; overflow: visible; padding-bottom: 4px; }
+  .client { width: calc(50% - 5px); }
+}
+
 /* ---------- hero ---------- */
 .hero {
   display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center;

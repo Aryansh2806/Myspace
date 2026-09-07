@@ -349,7 +349,8 @@ export default function Board() {
 
 
   return (
-    <>
+    <div className="layout">
+      <div className="side">
       <div className="hero">
         <Ring done={doneCount} total={tasks.length} />
         <div>
@@ -401,6 +402,9 @@ export default function Board() {
         </>
       )}
 
+      </div>
+
+      <div>
       <h2 className="railhead">
         {filterClient ?? "Queue"} <span className="n">{visible.length}</span>
         {filterClient && (
@@ -475,6 +479,8 @@ export default function Board() {
         clients={[...new Set(tasks.map((t) => t.client?.trim()).filter(Boolean))] as string[]}
       />
 
+      </div>
+
       <div className="dock">
         <button className="fab" onClick={() => setAdding(true)}>
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -490,7 +496,7 @@ export default function Board() {
           <button onClick={() => undrop(undo)}>Undo</button>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
