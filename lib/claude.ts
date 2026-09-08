@@ -43,6 +43,35 @@ export async function ask<T>(
   return res.parsed_output ?? null;
 }
 
+/**
+ * The market analysis rendered for a prompt. The cliche list is the point: it is
+ * the only part of this that reliably changes what gets written, because it
+ * bans specific phrasing rather than asking for vague originality.
+ */
+export function marketBlock(m: {
+  category?: string;
+  competitors?: { name: string; positions_on: string }[];
+  cliches?: string[];
+  openings?: { opening: string }[];
+} | null) {
+  if (!m) return "";
+  const lines = [];
+  if (m.competitors?.length)
+    lines.push(
+      `Competitors and what they lead with: ${m.competitors
+        .map((c) => `${c.name} (${c.positions_on})`)
+        .join("; ")}`,
+    );
+  if (m.openings?.length)
+    lines.push(`Positions this brand can own that they cannot: ${m.openings.map((o) => o.opening).join("; ")}`);
+  if (m.cliches?.length)
+    lines.push(
+      `BANNED — every brand in this category already says these, so none of them may ` +
+        `appear in any post: ${m.cliches.map((c) => `"${c}"`).join(", ")}`,
+    );
+  return lines.length ? "\n" + lines.join("\n") : "";
+}
+
 /** A brand profile rendered for a prompt. Empty fields are omitted, not sent blank. */
 export function brandBlock(c: {
   name: string;

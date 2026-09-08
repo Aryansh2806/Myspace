@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import type { Client, Post, Platform } from "@/lib/supabase";
 import PostRow from "../postrow";
-import Growth from "../growth";
+import Growth, { MarketPanel } from "../growth";
 import { weeksOf, sortQueue } from "@/lib/calendar.mjs";
 
 type Draft = Post & { why?: string; keep: boolean };
@@ -26,6 +26,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
   const [brief, setBrief] = useState("");
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [growing, setGrowing] = useState(false);
+  const [mapping, setMapping] = useState(false);
 
   async function load() {
     try {
@@ -238,7 +239,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
         </div>
       </div>
 
-      {!planning && !growing ? (
+      {!planning && !growing && !mapping ? (
         <div className="bar">
           <button className="btn is-primary" onClick={() => setPlanning(true)}>
             Generate plan
@@ -246,10 +247,22 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
           <button className="btn" onClick={() => setGrowing(true)}>
             Growth ideas
           </button>
+          <button className="btn" onClick={() => setMapping(true)}>
+            Market
+          </button>
           <a className="btn" href="/social">
             All brands
           </a>
         </div>
+      ) : mapping ? (
+        <>
+          <div className="bar">
+            <button className="btn" onClick={() => setMapping(false)}>
+              Back to posts
+            </button>
+          </div>
+          <MarketPanel client={client} />
+        </>
       ) : growing ? (
         <>
           <div className="bar">

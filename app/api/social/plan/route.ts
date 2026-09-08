@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/supabase";
-import { ask, brandBlock } from "@/lib/claude";
+import { ask, brandBlock, marketBlock } from "@/lib/claude";
 import { nowLabel } from "@/lib/due.mjs";
 import { spread } from "@/lib/calendar.mjs";
 
@@ -41,7 +41,7 @@ const Plan = z.object({
   ),
 });
 
-function systemPrompt(brand: string, recent: string[], platforms: string[], count: number) {
+function systemPrompt(brand: string, market: string, recent: string[], platforms: string[], count: number) {
   const avoid = recent.length
     ? `\nThis brand has already posted the captions below. Do not repeat these angles,
 openings, claims or structures — find something it has not said yet:\n${recent
@@ -52,7 +52,7 @@ openings, claims or structures — find something it has not said yet:\n${recent
   return `You write social media content for a small Indian branding studio.
 Right now it is ${nowLabel(new Date(), TZ)} in ${TZ}.
 
-${brand}
+${brand}${market}
 ${avoid}
 Write ${count} posts across: ${platforms.join(" and ")}.
 
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
       Plan,
       systemPrompt(
         brandBlock(client),
+        marketBlock(client.market),
         (past ?? []).map((p) => p.caption).filter(Boolean) as string[],
         wanted,
         n,

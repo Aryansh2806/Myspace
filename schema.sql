@@ -62,3 +62,7 @@ create index if not exists posts_client_idx on posts (client_id, status, schedul
 create index if not exists posts_position_idx on posts (client_id, position);
 alter table clients enable row level security;
 alter table posts enable row level security;
+
+-- Market analysis per brand. Also shipped as migrations/005_market.sql.
+alter table clients add column if not exists market jsonb;
+alter table clients add column if not exists competitor_notes text;

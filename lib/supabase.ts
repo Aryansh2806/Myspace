@@ -38,7 +38,17 @@ export type Client = {
   links: { instagram?: string | null; linkedin?: string | null; website?: string | null } | null;
   language: Language;
   notes: string | null;
+  market: Market | null;
+  competitor_notes: string | null;
   created_at: string;
+};
+
+export type Market = {
+  category: string;
+  competitors: { name: string; positions_on: string; weakness: string }[];
+  cliches: string[];
+  openings: { opening: string; why_now: string }[];
+  confidence: "high" | "medium" | "low";
 };
 
 export type Platform = "instagram" | "linkedin";

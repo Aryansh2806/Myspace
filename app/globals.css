@@ -595,3 +595,4 @@ textarea.caption-field { min-height: 9em; }
   color: var(--ember); background: var(--ember-bg);
   padding: 8px 11px; border-radius: 10px; font-size: 12.5px;
 }
+.chip.banned { color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg); text-decoration: line-through; }
