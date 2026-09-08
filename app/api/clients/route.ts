@@ -54,7 +54,7 @@ export async function PATCH(req: Request) {
 
   const allowed = [
     "name", "is_self", "voice", "audience", "pillars",
-    "tone_do", "tone_dont", "colours", "links", "language", "notes", "competitor_notes",
+    "tone_do", "tone_dont", "colours", "links", "language", "notes", "competitor_notes", "objective",
   ] as const;
   const patch: Record<string, unknown> = {};
   for (const k of allowed) {

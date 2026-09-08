@@ -40,6 +40,7 @@ export type Client = {
   notes: string | null;
   market: Market | null;
   competitor_notes: string | null;
+  objective: string | null;
   created_at: string;
 };
 

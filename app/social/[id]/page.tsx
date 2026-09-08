@@ -24,6 +24,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
   const [start, setStart] = useState(ymd(new Date()));
   const [end, setEnd] = useState(ymd(new Date(Date.now() + 13 * 864e5)));
   const [brief, setBrief] = useState("");
+  const [objective, setObjective] = useState("");
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [growing, setGrowing] = useState(false);
   const [mapping, setMapping] = useState(false);
@@ -39,6 +40,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
       if (!found) return setErr("That brand no longer exists.");
       setErr("");
       setClient(found);
+      setObjective(found.objective ?? "");
       setPosts(p);
     } catch {
       setErr("Could not reach the server. Check your connection, then reload.");
@@ -74,7 +76,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
       const res = await fetch("/api/social/plan", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ client_id: id, count, start, end, platforms, brief }),
+        body: JSON.stringify({ client_id: id, count, start, end, platforms, brief, objective }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -275,6 +277,15 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
       ) : (
         <div className="capture plan-form">
           <label className="post-field">
+            <span>What is this batch for? — worth 4x the keep-rate, measured</span>
+            <textarea
+              className="field"
+              placeholder="e.g. get enquiries from site engineers starting projects next quarter"
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+            />
+          </label>
+          <label className="post-field">
             <span>How many posts</span>
             <div className="chips">
               {[4, 8, 12, 16].map((n) => (
@@ -324,7 +335,7 @@ export default function Brand({ params }: { params: Promise<{ id: string }> }) {
             />
           </label>
           <div className="bar">
-            <button className="btn is-primary" disabled={busy || !platforms.length} onClick={generate}>
+            <button className="btn is-primary" disabled={busy || !platforms.length || !objective.trim()} onClick={generate}>
               {busy ? "Writing…" : `Write ${count} posts`}
             </button>
             <button className="btn" onClick={() => setPlanning(false)}>
