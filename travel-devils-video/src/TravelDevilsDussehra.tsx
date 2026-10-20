@@ -1,10 +1,10 @@
 import React from 'react';
-import {AbsoluteFill, Easing, interpolate, Sequence, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Easing, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {fontFamily} from './fonts';
 import {Fire} from './Fire';
 import {RavanHead} from './RavanHead';
 
-const RED = '#C1121F';
+const RED = '#DC061D'; // Travel Devils brand red
 const ORANGE = '#E8702A';
 const INK = '#141414';
 const PAPER = '#F4F1EA';
@@ -74,16 +74,7 @@ const Horns: React.FC<{size: number; color?: string}> = ({size, color = RED}) =>
 	</svg>
 );
 
-const Logo: React.FC<{scale?: number; dark?: boolean}> = ({scale = 1, dark}) => (
-	<div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', transform: `scale(${scale})`}}>
-		<Horns size={120} color={dark ? '#FCBF49' : RED} />
-		<div style={{fontFamily, fontWeight: 900, fontSize: 46, lineHeight: 0.95, color: dark ? '#fff' : INK, letterSpacing: 2, textAlign: 'center', marginTop: 2}}>
-			TRAVEL
-			<br />
-			<span style={{color: dark ? '#FCBF49' : RED}}>DEVILS</span>
-		</div>
-	</div>
-);
+const Logo: React.FC<{width: number}> = ({width}) => <Img src={staticFile('logo.png')} style={{width}} />;
 
 const Paper: React.FC = () => (
 	<AbsoluteFill style={{background: PAPER}}>
@@ -193,7 +184,7 @@ const Intro: React.FC = () => {
 			<div style={{height: 6, width: 420 * line, background: ORANGE, margin: '18px 0'}} />
 			<div style={{fontFamily, fontWeight: 900, fontSize: 150, color: RED, transform: `scale(${s})`, letterSpacing: -3}}>Dussehra</div>
 			<div style={{marginTop: 60, opacity: interpolate(frame, [30, 45], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}}>
-				<Logo scale={1.1} />
+				<Logo width={560} />
 			</div>
 		</AbsoluteFill>
 	);
@@ -230,21 +221,22 @@ const Outro: React.FC = () => {
 	const frame = useCurrentFrame();
 	const {fps} = useVideoConfig();
 	const wipe = interpolate(frame, [0, 18], [0, 1500], {extrapolateRight: 'clamp', easing: Easing.inOut(Easing.cubic)});
-	const logo = spring({frame: frame - 14, fps, config: {damping: 10}});
-	const tag = spring({frame: frame - 30, fps, config: {damping: 14}});
-	const cta = spring({frame: frame - 48, fps, config: {damping: 12}});
+	const emblem = spring({frame: frame - 12, fps, config: {damping: 12, mass: 0.8}});
+	const word = interpolate(frame, [26, 44], [0, 100], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+	const tag = spring({frame: frame - 44, fps, config: {damping: 14}});
+	const cta = spring({frame: frame - 60, fps, config: {damping: 12}});
 	const pulse = 1 + Math.sin(frame * 0.25) * 0.03 * cta;
 	return (
 		<AbsoluteFill>
-			<div style={{position: 'absolute', left: 540 - wipe, top: 960 - wipe, width: wipe * 2, height: wipe * 2, borderRadius: '50%', background: `radial-gradient(circle, #8B0A14 0%, #4A050B 70%)`}} />
+			<div style={{position: 'absolute', left: 540 - wipe, top: 960 - wipe, width: wipe * 2, height: wipe * 2, borderRadius: '50%', background: '#fff'}} />
 			<AbsoluteFill style={{alignItems: 'center', justifyContent: 'center'}}>
-				<div style={{transform: `scale(${logo * 2.4})`, marginBottom: 200}}>
-					<Logo dark />
-				</div>
-				<div style={{fontFamily, fontWeight: 800, fontSize: 70, color: '#fff', textAlign: 'center', lineHeight: 1.15, opacity: tag, transform: `translateY(${(1 - tag) * 40}px)`}}>
+				{/* The compass emblem spins in like it's finding north, then the wordmark wipes in */}
+				<Img src={staticFile('logo-emblem.png')} style={{width: 360, transform: `scale(${emblem}) rotate(${(1 - emblem) * -540}deg)`}} />
+				<Img src={staticFile('logo-wordmark.png')} style={{width: 640, marginTop: 50, clipPath: `inset(0 ${100 - word}% 0 0)`}} />
+				<div style={{marginTop: 90, fontFamily, fontWeight: 800, fontSize: 70, color: INK, textAlign: 'center', lineHeight: 1.15, opacity: tag, transform: `translateY(${(1 - tag) * 40}px)`}}>
 					Pack your bags,
 					<br />
-					<span style={{color: '#FCBF49'}}>not your excuses.</span>
+					<span style={{color: RED}}>not your excuses.</span>
 				</div>
 				<div
 					style={{
@@ -252,16 +244,17 @@ const Outro: React.FC = () => {
 						fontFamily,
 						fontWeight: 800,
 						fontSize: 44,
-						color: INK,
-						background: '#FCBF49',
+						color: '#fff',
+						background: RED,
 						padding: '22px 52px',
 						borderRadius: 999,
 						transform: `scale(${cta * pulse})`,
+						boxShadow: `8px 8px 0 ${INK}`,
 					}}
 				>
 					DM us to plan your escape ✈️
 				</div>
-				<div style={{position: 'absolute', bottom: 110, fontFamily, fontWeight: 600, fontSize: 36, color: 'rgba(255,255,255,0.75)', letterSpacing: 4, opacity: cta}}>
+				<div style={{position: 'absolute', bottom: 110, fontFamily, fontWeight: 600, fontSize: 36, color: '#777', letterSpacing: 4, opacity: cta}}>
 					HAPPY DUSSEHRA 🔥
 				</div>
 			</AbsoluteFill>
@@ -284,8 +277,8 @@ export const TravelDevilsDussehra: React.FC = () => {
 
 			{/* Small brand mark, top-right, between intro and outro */}
 			{frame > 75 && frame < OUTRO && (
-				<div style={{position: 'absolute', top: 90, right: 70, opacity: interpolate(frame, [75, 90], [0, 1], {extrapolateRight: 'clamp'})}}>
-					<Logo scale={0.75} />
+				<div style={{position: 'absolute', top: 80, right: 60, opacity: interpolate(frame, [75, 90], [0, 1], {extrapolateRight: 'clamp'})}}>
+					<Logo width={250} />
 				</div>
 			)}
 
